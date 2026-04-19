@@ -51,8 +51,7 @@ list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*global\\.cc")
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*help\\.cc")
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*maple\\.cc")
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*misc\\.cc")  
-list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*prog\\.cc")
-list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*usual\\.cc") 
+list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*prog\\.cc") 
 
 # Demo files
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*-demo.*")
@@ -65,15 +64,14 @@ add_library(giac SHARED
     ${GIAC_SOURCES}
 )
 
-target_compile_definitions(giac PRIVATE
-    HAVE_CONFIG_H=1
-    NO_GNUPLOT=1
-    NO_PARI=1
-    NO_FLTK=1
-    ANDROID=1
-    GIAC_COUT=0
-    _POSIX_C_SOURCE=200809L
-    _GNU_SOURCE
+target_compile_options(giac PRIVATE
+    -O2
+    -fvisibility=hidden
+    -fexceptions
+    -frtti
+    -Wno-unused-function
+    -include unistd.h
+    -Wno-c++11-narrowing
 )
 
 target_compile_options(giac PRIVATE
