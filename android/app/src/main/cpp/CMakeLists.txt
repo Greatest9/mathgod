@@ -45,7 +45,7 @@ list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*/simpleInterface.*")
 # Problematic individual files
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*desolve\\.cc")
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*signalprocessing.*")
-# list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*gen\\.cc")        # ← RE-INCLUDED
+list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*gen\\.cc")           # ← EXCLUDED
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*graphtheory.*")
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*global\\.cc")
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*help\\.cc")
@@ -53,8 +53,8 @@ list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*identificateur\\.cc")
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*maple\\.cc")
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*misc\\.cc")
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*prog\\.cc")
-# list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*vecteur\\.cc")    # ← RE-INCLUDED
-# list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*usual\\.cc")      # ← Already re-included
+# list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*vecteur\\.cc")    # ← INCLUDED
+# list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*usual\\.cc")      # ← INCLUDED
 
 # Demo files
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*-demo.*")
