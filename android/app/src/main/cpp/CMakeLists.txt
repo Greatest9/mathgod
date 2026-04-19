@@ -7,9 +7,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(GIAC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/giac)
 
+# ADD THE HEADERS PATH WHERE config.h ACTUALLY LIVES
 include_directories(
     ${GIAC_ROOT}/src
     ${GIAC_ROOT}/src/giac
+    ${GIAC_ROOT}/src/giac/headers   # ← ADD THIS LINE
 )
 
 file(GLOB_RECURSE GIAC_SOURCES
