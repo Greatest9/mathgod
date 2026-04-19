@@ -1355,7 +1355,7 @@ bool dfu_send_scriptstore(const char * fname){
     FILE * f=fopen(fname,"rb");
     if (!f)
       return false;
-    unsigned char buf[24];
+    unsigned char buf[32];  // fixed: was [24] but fread reads 32 bytes
     int i=fread(buf,1,32,f);
     fclose(f);
     if (i!=32)
