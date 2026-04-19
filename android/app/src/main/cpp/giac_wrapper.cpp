@@ -2,8 +2,10 @@
 #include <cstring>
 #include <string>
 #include <stdexcept>
-#include "giac.h
-#include "config.h"
+
+// Correct paths for GeoGebra Giac repository structure
+#include "src/giac/headers/config.h"
+#include "src/giac/headers/giac.h"
 
 static giac::context* g_ctx = nullptr;
 

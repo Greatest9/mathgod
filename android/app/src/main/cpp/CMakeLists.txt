@@ -19,6 +19,12 @@ file(GLOB_RECURSE GIAC_SOURCES
     "${GIAC_ROOT}/src/*.cc"
 )
 
+
+# Exclude demo and test files
+list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*GeoGebraCAS-demo.*")
+list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*GeoGebraCAS\\.cc")
+list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*/test/.*")
+
 add_library(giac SHARED
     ${CMAKE_CURRENT_SOURCE_DIR}/giac_wrapper.cpp
     ${GIAC_SOURCES}
