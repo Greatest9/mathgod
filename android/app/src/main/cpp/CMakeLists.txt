@@ -39,8 +39,7 @@ file(GLOB_RECURSE GIAC_SOURCES
 # Test files
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*/test/.*")
 
-# Plotting and graphics (not needed on Android)
-list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*/plot.*")
+# Graphics (except plot.cc which we need)
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*/opengl.*")
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*/gui.*")
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*/fltk.*")
@@ -60,19 +59,22 @@ list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*/nodegiac.*")
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*/simpleInterface.*")
 
 # Problematic individual files
-# ONLY exclude files that actually use FLTK/image/audio symbols (rgba_image, audio_clip, generr)
-# that live in the excluded plot/graphics layer:
-#list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*misc\\.cc")         # uses rgba_image, audio_clip
-list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*maple\\.cc")        # uses rgba_image, generr
-list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*desolve\\.cc")      # ODE solver, pulls in FLTK deps
+list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*maple\\.cc")
+list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*desolve\\.cc")
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*signalprocessing.*")
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*graphtheory.*")
-# NOTE: gen.cc, identificateur.cc, global.cc, prog.cc, help.cc are all SAFE and REQUIRED.
-#       They were previously excluded by mistake - they have zero problematic symbols.
+# list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*misc\\.cc")     # ← KEEP (will add manually)
+# list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*plot\\.cc")     # ← KEEP (will add manually)
 
 # Demo files
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*-demo.*")
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*minigiac.*")
+
+# ─── MANUALLY ADD MISSING FILES ───────────────────────────────────────────────
+list(APPEND GIAC_SOURCES
+    ${GIAC_ROOT}/src/giac/cpp/misc.cc
+    ${GIAC_ROOT}/src/giac/cpp/plot.cc
+)
 
 # ─── BUILD THE LIBRARY ─────────────────────────────────────────────────────────
 
@@ -80,6 +82,9 @@ add_library(giac SHARED
     ${CMAKE_CURRENT_SOURCE_DIR}/giac_wrapper.cpp
     ${GIAC_SOURCES}
 )
+
+# ─── FIX FOR global.cc fread error ────────────────────────────────────────────
+set_source_files_properties(${GIAC_ROOT}/src/giac/cpp/global.cc PROPERTIES COMPILE_FLAGS "-U_FORTIFY_SOURCE")
 
 target_compile_definitions(giac PRIVATE
     HAVE_CONFIG_H=1
@@ -106,14 +111,14 @@ target_compile_options(giac PRIVATE
 find_library(log-lib log)
 find_library(m-lib m)
 
-# ─── Prebuilt GMP + MPFR (bundled in giac source tree) ─────────────────────────
+# ─── Prebuilt GMP + MPFR ──────────────────────────────────────────────────────
 add_library(gmp  STATIC IMPORTED)
 add_library(mpfr STATIC IMPORTED)
 set_target_properties(gmp  PROPERTIES IMPORTED_LOCATION ${GIAC_PREBUILT_DIR}/libgmp.a)
 set_target_properties(mpfr PROPERTIES IMPORTED_LOCATION ${GIAC_PREBUILT_DIR}/libmpfr.a)
 
 target_link_libraries(giac
-    mpfr        # must come before gmp (mpfr depends on gmp)
+    mpfr
     gmp
     ${log-lib}
     ${m-lib}
