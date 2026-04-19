@@ -39,14 +39,11 @@ file(GLOB_RECURSE GIAC_SOURCES
 # Test files
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*/test/.*")
 
-# Graphics (except plot.cc which we need)
+# Graphics (plot.cc is needed, but opengl/gui/fltk/glut are not)
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*/opengl.*")
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*/gui.*")
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*/fltk.*")
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*/glut.*")
-
-# PARI library (not used in minimal build)
-list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*/pari.*")
 
 # GeoGebra-specific wrappers (not needed)
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*/geogebra.*")
@@ -58,23 +55,13 @@ list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*/nodegiac.*")
 # Simple interface examples (not needed)
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*/simpleInterface.*")
 
-# Problematic individual files
-list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*maple\\.cc")
-list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*desolve\\.cc")
+# Only exclude files that genuinely cause compile errors
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*signalprocessing.*")
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*graphtheory.*")
-# list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*misc\\.cc")     # ← KEEP (will add manually)
-# list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*plot\\.cc")     # ← KEEP (will add manually)
 
 # Demo files
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*-demo.*")
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*minigiac.*")
-
-# ─── MANUALLY ADD MISSING FILES ───────────────────────────────────────────────
-list(APPEND GIAC_SOURCES
-    ${GIAC_ROOT}/src/giac/cpp/misc.cc
-    ${GIAC_ROOT}/src/giac/cpp/plot.cc
-)
 
 # ─── BUILD THE LIBRARY ─────────────────────────────────────────────────────────
 
@@ -89,7 +76,6 @@ set_source_files_properties(${GIAC_ROOT}/src/giac/cpp/global.cc PROPERTIES COMPI
 target_compile_definitions(giac PRIVATE
     HAVE_CONFIG_H=1
     NO_GNUPLOT=1
-    NO_PARI=1
     NO_FLTK=1
     ANDROID=1
     GIAC_COUT=0
