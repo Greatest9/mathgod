@@ -3,7 +3,7 @@
 #include <string>
 #include <stdexcept>
 #include "giac/config.h"
-#include "giac/giac.h"
+#include "src/giac/headers/config.h"
 
 static giac::context* g_ctx = nullptr;
 
