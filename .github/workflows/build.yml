@@ -12,7 +12,6 @@ jobs:
     steps:
     - name: 📥 Checkout code
       uses: actions/checkout@v4
-      # No submodules line here
     
     - name: 🐧 Setup Java
       uses: actions/setup-java@v4
@@ -23,8 +22,7 @@ jobs:
     - name: 📱 Setup Flutter
       uses: subosito/flutter-action@v2
       with:
-        flutter-version: '3.22.5'
-        channel: 'stable'
+        channel: 'stable'  # ← Use latest stable (no version number)
         cache: true
     
     - name: 📦 Install dependencies
