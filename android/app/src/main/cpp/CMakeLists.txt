@@ -45,6 +45,8 @@ list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*/simpleInterface.*")
 # Problematic individual files
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*desolve\\.cc")
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*signalprocessing.*")
+list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*gen\\.cc")           # ← Added
+list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*graphtheory.*")      # ← Added
 
 # Demo files
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*-demo.*")
