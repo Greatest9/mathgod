@@ -36,4 +36,4 @@ jobs:
       with:
         name: mathgod-release-apk
         path: build/app/outputs/flutter-apk/app-release.apk
-        retention-days: 30
+        retention-days: 29
