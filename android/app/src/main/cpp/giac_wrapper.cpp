@@ -3,9 +3,9 @@
 #include <string>
 #include <stdexcept>
 
-// Correct paths for GeoGebra Giac repository structure
-#include "src/giac/headers/config.h"
-#include "src/giac/headers/giac.h"
+// These are relative to the include directories in CMakeLists.txt
+#include "config.h"
+#include "giac.h"
 
 static giac::context* g_ctx = nullptr;
 
