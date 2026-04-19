@@ -3,7 +3,6 @@
 #include <string>
 #include <stdexcept>
 
-// These are relative to the include directories in CMakeLists.txt
 #include "config.h"
 #include "giac.h"
 
@@ -16,7 +15,7 @@ int giac_init() {
     if (g_ctx) return 0;
     try {
         g_ctx = new giac::context();
-        g_ctx->output_format = giac::_OUTPUT_FORMAT_NORMAL;
+        // output_format doesn't exist in this version – removed
         return 0;
     } catch (...) {
         return -1;
