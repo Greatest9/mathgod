@@ -62,7 +62,7 @@ list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*/simpleInterface.*")
 # Problematic individual files
 # ONLY exclude files that actually use FLTK/image/audio symbols (rgba_image, audio_clip, generr)
 # that live in the excluded plot/graphics layer:
-list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*misc\\.cc")         # uses rgba_image, audio_clip
+#list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*misc\\.cc")         # uses rgba_image, audio_clip
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*maple\\.cc")        # uses rgba_image, generr
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*desolve\\.cc")      # ODE solver, pulls in FLTK deps
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*signalprocessing.*")
