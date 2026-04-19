@@ -7,11 +7,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(GIAC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/giac)
 
-# ADD THE HEADERS PATH WHERE config.h ACTUALLY LIVES
 include_directories(
     ${GIAC_ROOT}/src
     ${GIAC_ROOT}/src/giac
-    ${GIAC_ROOT}/src/giac/headers   # ← ADD THIS LINE
+    ${GIAC_ROOT}/src/giac/headers
 )
 
 file(GLOB_RECURSE GIAC_SOURCES
@@ -19,11 +18,39 @@ file(GLOB_RECURSE GIAC_SOURCES
     "${GIAC_ROOT}/src/*.cc"
 )
 
-
-# Exclude demo and test files
-list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*GeoGebraCAS-demo.*")
-list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*GeoGebraCAS\\.cc")
+# ─── EXCLUDE EVERYTHING NOT NEEDED FOR CORE CAS ────────────────────────────────
+# Test files
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*/test/.*")
+
+# Plotting and graphics (not needed on Android)
+list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*/plot.*")
+list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*/opengl.*")
+list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*/gui.*")
+list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*/fltk.*")
+list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*/glut.*")
+
+# PARI library (not used in minimal build)
+list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*/pari.*")
+
+# GeoGebra-specific wrappers (not needed)
+list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*/geogebra.*")
+list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*GeoGebraCAS.*")
+
+# Node.js bindings (not needed)
+list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*/nodegiac.*")
+
+# Simple interface examples (not needed)
+list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*/simpleInterface.*")
+
+# Problematic individual files
+list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*desolve\\.cc")
+list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*signalprocessing.*")
+
+# Demo files
+list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*-demo.*")
+list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*minigiac.*")
+
+# ─── BUILD THE LIBRARY ─────────────────────────────────────────────────────────
 
 add_library(giac SHARED
     ${CMAKE_CURRENT_SOURCE_DIR}/giac_wrapper.cpp
