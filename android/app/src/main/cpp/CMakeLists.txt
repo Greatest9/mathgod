@@ -45,14 +45,14 @@ list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*/simpleInterface.*")
 # Problematic individual files
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*desolve\\.cc")
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*signalprocessing.*")
-list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*gen\\.cc")           # ← Added
-list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*graphtheory.*")      # ← Added
+list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*gen\\.cc")
+list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*graphtheory.*")
+list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*global\\.cc")
+list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*help\\.cc")
 
 # Demo files
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*-demo.*")
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*minigiac.*")
-list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*global\\.cc")
-list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*help\\.cc")        # ← ADD THIS
 
 # ─── BUILD THE LIBRARY ─────────────────────────────────────────────────────────
 
@@ -68,6 +68,7 @@ target_compile_definitions(giac PRIVATE
     NO_FLTK=1
     ANDROID=1
     GIAC_COUT=0
+    _POSIX_C_SOURCE=200809L      # ← ADD THIS (defines R_OK, unlink, etc.)
 )
 
 target_compile_options(giac PRIVATE
