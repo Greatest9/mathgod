@@ -51,6 +51,7 @@ list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*graphtheory.*")      # ← Added
 # Demo files
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*-demo.*")
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*minigiac.*")
+list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*global\\.cc")      # ← NEW
 
 # ─── BUILD THE LIBRARY ─────────────────────────────────────────────────────────
 
