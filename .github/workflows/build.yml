@@ -1,0 +1,55 @@
+name: Build Math God APK
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  # Allow manual trigger from GitHub Actions tab
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: 🐧 Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+    
+    - name: 📱 Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.22.5'
+        channel: 'stable'
+        cache: true
+    
+    - name: 📦 Install dependencies
+      run: flutter pub get
+    
+    - name: 🔧 Build APK (Release)
+      run: flutter build apk --release
+    
+    - name: 📦 Build Split APKs (Optional - smaller per device)
+      run: flutter build apk --split-per-abi
+    
+    - name: 📤 Upload Release APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: mathgod-release-apk
+        path: build/app/outputs/flutter-apk/app-release.apk
+        retention-days: 30
+    
+    - name: 📤 Upload Split APKs
+      uses: actions/upload-artifact@v4
+      with:
+        name: mathgod-split-apks
+        path: build/app/outputs/flutter-apk/*.apk
+        retention-days: 30
