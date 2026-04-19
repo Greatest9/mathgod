@@ -3,9 +3,6 @@ name: Build Math God APK
 on:
   push:
     branches: [ "main", "master" ]
-  pull_request:
-    branches: [ "main", "master" ]
-  # Allow manual trigger from GitHub Actions tab
   workflow_dispatch:
 
 jobs:
@@ -15,8 +12,7 @@ jobs:
     steps:
     - name: 📥 Checkout code
       uses: actions/checkout@v4
-      with:
-        submodules: recursive
+      # No submodules line here
     
     - name: 🐧 Setup Java
       uses: actions/setup-java@v4
@@ -37,19 +33,9 @@ jobs:
     - name: 🔧 Build APK (Release)
       run: flutter build apk --release
     
-    - name: 📦 Build Split APKs (Optional - smaller per device)
-      run: flutter build apk --split-per-abi
-    
-    - name: 📤 Upload Release APK
+    - name: 📤 Upload APK
       uses: actions/upload-artifact@v4
       with:
         name: mathgod-release-apk
         path: build/app/outputs/flutter-apk/app-release.apk
-        retention-days: 30
-    
-    - name: 📤 Upload Split APKs
-      uses: actions/upload-artifact@v4
-      with:
-        name: mathgod-split-apks
-        path: build/app/outputs/flutter-apk/*.apk
         retention-days: 30
