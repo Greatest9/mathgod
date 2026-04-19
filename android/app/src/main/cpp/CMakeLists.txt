@@ -50,6 +50,7 @@ list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*graphtheory.*")
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*global\\.cc")
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*help\\.cc")
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*maple\\.cc")
+list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*misc\\.cc")  
 
 # Demo files
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*-demo.*")
