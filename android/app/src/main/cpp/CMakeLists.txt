@@ -52,6 +52,7 @@ list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*help\\.cc")
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*maple\\.cc")
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*misc\\.cc")  
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*prog\\.cc")
+list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*usual\\.cc") 
 
 # Demo files
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*-demo.*")
