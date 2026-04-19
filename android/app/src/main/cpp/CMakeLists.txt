@@ -68,7 +68,8 @@ target_compile_definitions(giac PRIVATE
     NO_FLTK=1
     ANDROID=1
     GIAC_COUT=0
-    _POSIX_C_SOURCE=200809L      # ← ADD THIS (defines R_OK, unlink, etc.)
+    _POSIX_C_SOURCE=200809L
+    _GNU_SOURCE
 )
 
 target_compile_options(giac PRIVATE
@@ -77,6 +78,7 @@ target_compile_options(giac PRIVATE
     -fexceptions
     -frtti
     -Wno-unused-function
+    -include unistd.h
 )
 
 find_library(log-lib log)
