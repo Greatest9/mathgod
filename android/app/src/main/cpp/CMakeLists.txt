@@ -7,10 +7,27 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(GIAC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/giac)
 
+# ─── ABI → prebuilt path mapping ───────────────────────────────────────────────
+if(ANDROID_ABI STREQUAL "arm64-v8a")
+    set(GIAC_ABI_DIR "arm-v8")
+elseif(ANDROID_ABI STREQUAL "armeabi-v7a")
+    set(GIAC_ABI_DIR "arm-v7")
+elseif(ANDROID_ABI STREQUAL "x86_64")
+    set(GIAC_ABI_DIR "x86-64")
+elseif(ANDROID_ABI STREQUAL "x86")
+    set(GIAC_ABI_DIR "x86")
+else()
+    message(FATAL_ERROR "Unsupported ABI: ${ANDROID_ABI}")
+endif()
+
+set(GIAC_PREBUILT_DIR ${GIAC_ROOT}/src/jni/prebuilt/android/${GIAC_ABI_DIR})
+set(GIAC_HEADER_DIR   ${GIAC_ROOT}/src/giac/headers/android/${GIAC_ABI_DIR})
+
 include_directories(
     ${GIAC_ROOT}/src
     ${GIAC_ROOT}/src/giac
     ${GIAC_ROOT}/src/giac/headers
+    ${GIAC_HEADER_DIR}
 )
 
 file(GLOB_RECURSE GIAC_SOURCES
@@ -43,18 +60,15 @@ list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*/nodegiac.*")
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*/simpleInterface.*")
 
 # Problematic individual files
-list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*desolve\\.cc")
+# ONLY exclude files that actually use FLTK/image/audio symbols (rgba_image, audio_clip, generr)
+# that live in the excluded plot/graphics layer:
+list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*misc\\.cc")         # uses rgba_image, audio_clip
+list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*maple\\.cc")        # uses rgba_image, generr
+list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*desolve\\.cc")      # ODE solver, pulls in FLTK deps
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*signalprocessing.*")
-list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*gen\\.cc")
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*graphtheory.*")
-list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*global\\.cc")
-list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*help\\.cc")
-list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*identificateur\\.cc")
-list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*maple\\.cc")
-list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*misc\\.cc")
-list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*prog\\.cc")
-list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*vecteur\\.cc")
-# list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*usual\\.cc")        # ← INCLUDED
+# NOTE: gen.cc, identificateur.cc, global.cc, prog.cc, help.cc are all SAFE and REQUIRED.
+#       They were previously excluded by mistake - they have zero problematic symbols.
 
 # Demo files
 list(FILTER GIAC_SOURCES EXCLUDE REGEX ".*-demo.*")
@@ -76,6 +90,7 @@ target_compile_definitions(giac PRIVATE
     GIAC_COUT=0
     _POSIX_C_SOURCE=200809L
     _GNU_SOURCE
+    GIAC_GGB=1
 )
 
 target_compile_options(giac PRIVATE
@@ -91,7 +106,15 @@ target_compile_options(giac PRIVATE
 find_library(log-lib log)
 find_library(m-lib m)
 
+# ─── Prebuilt GMP + MPFR (bundled in giac source tree) ─────────────────────────
+add_library(gmp  STATIC IMPORTED)
+add_library(mpfr STATIC IMPORTED)
+set_target_properties(gmp  PROPERTIES IMPORTED_LOCATION ${GIAC_PREBUILT_DIR}/libgmp.a)
+set_target_properties(mpfr PROPERTIES IMPORTED_LOCATION ${GIAC_PREBUILT_DIR}/libmpfr.a)
+
 target_link_libraries(giac
+    mpfr        # must come before gmp (mpfr depends on gmp)
+    gmp
     ${log-lib}
     ${m-lib}
 )
