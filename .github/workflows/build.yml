@@ -1,4 +1,5 @@
 name: Build Math God APK
+
 on:
   push:
     branches: [ "main", "master" ]
@@ -40,6 +41,20 @@ jobs:
         tag_name: ${{ steps.tag.outputs.tag }}
         name: "MathGod APK – ${{ steps.tag.outputs.tag }}"
         files: build/app/outputs/flutter-apk/app-release.apk
-        body: "Automated release from commit ${{ github.sha }}"
+        body: |
+          ## Math God APK
+          
+          - **Build Date:** ${{ steps.tag.outputs.tag }}
+          - **Commit:** ${{ github.sha }}
+          - **Branch:** ${{ github.ref_name }}
+          
+          ### Installation
+          1. Download the APK below
+          2. Enable "Install from unknown sources" on your Android device
+          3. Install and activate with your license key
+          
+          ### Need help?
+          Contact: mathgodsupport@gmail.com
+        make_latest: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
