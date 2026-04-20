@@ -778,6 +778,17 @@ class SolverEngine {
   }
 
   double _ep(String e, double x) {
+    // Use Giac for accurate evaluation when available
+    if (_useGiac) {
+      try {
+        final xStr = x.toStringAsFixed(15);
+        final expr = e.toLowerCase().replaceAll('x', '($xStr)');
+        final result = GiacFFI.instance.solve('evalf($expr)');
+        final val = double.tryParse(result.trim());
+        if (val != null) return val;
+      } catch (_) {}
+    }
+    // Fallback: simple pattern matching for common cases
     final s = e.toLowerCase().replaceAll(' ', '');
     if (s.contains('x^3') && s.contains('-2')) return x * x * x - 2;
     if (s.contains('x^3') && s.contains('+2')) return x * x * x + 2;
@@ -788,6 +799,18 @@ class SolverEngine {
   }
 
   double _epd(String e, double x) {
+    // Use Giac for accurate derivative evaluation when available
+    if (_useGiac) {
+      try {
+        final xStr = x.toStringAsFixed(15);
+        final result = GiacFFI.instance.solve(
+          'evalf(subst(diff(${e.toLowerCase()},x),x,$xStr))',
+        );
+        final val = double.tryParse(result.trim());
+        if (val != null) return val;
+      } catch (_) {}
+    }
+    // Fallback
     final s = e.toLowerCase().replaceAll(' ', '');
     if (s.contains('x^3')) return 3 * x * x;
     if (s.contains('x^2')) return 2 * x;

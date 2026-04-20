@@ -242,42 +242,69 @@ class _DomainCard extends StatelessWidget {
   final ({String sym, String name, String sub, Color col}) d;
   const _DomainCard({required this.d});
 
+  // One representative example per domain, pre-fills the solver
+  static const _domainExamples = {
+    'Calculus': 'd/dx[x^5]',
+    'Linear Algebra': 'eigen([[4,1],[2,3]])',
+    'Diff. Equations': "ode(y'' + 4y = 0)",
+    'Real Analysis': 'series(1/n^2)',
+    'Number Theory': 'factorize(360)',
+    'Abstract Algebra': 'group(Z_n)',
+    'Statistics': 'mean([1,2,3,4,5])',
+    'Trigonometry': 'sin(pi/6)',
+    'Complex Analysis': 'complex(3+4i)',
+    'Topology': 'topology(compact)',
+    'Vector Calculus': 'curl(F)',
+  };
+
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFF161624),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: d.col.withOpacity(0.2)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(d.sym, style: TextStyle(fontSize: 22, color: d.col)),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                d.name,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontSize: 13),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              Text(
-                d.sub,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodyMedium?.copyWith(fontSize: 10),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-        ],
+    final example = _domainExamples[d.name];
+    return GestureDetector(
+      onTap: () {
+        if (example != null) {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => SolverScreen(initialInput: example),
+            ),
+          );
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: const Color(0xFF161624),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: d.col.withOpacity(0.2)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(d.sym, style: TextStyle(fontSize: 22, color: d.col)),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  d.name,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleMedium?.copyWith(fontSize: 13),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  d.sub,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(fontSize: 10),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
