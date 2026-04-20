@@ -1,5 +1,4 @@
 name: Build Math God APK
-
 on:
   push:
     branches: [ "main", "master" ]
@@ -22,7 +21,7 @@ jobs:
     - name: 📱 Setup Flutter
       uses: subosito/flutter-action@v2
       with:
-        channel: 'stable'  # ← Use latest stable (no version number)
+        channel: 'stable'
         cache: true
     
     - name: 📦 Install dependencies
@@ -30,10 +29,17 @@ jobs:
     
     - name: 🔧 Build APK (Release)
       run: flutter build apk --release
-    
-    - name: 📤 Upload APK
-      uses: actions/upload-artifact@v4
+
+    - name: 🏷️ Generate release tag
+      id: tag
+      run: echo "tag=build-$(date +'%Y%m%d-%H%M%S')" >> $GITHUB_OUTPUT
+
+    - name: 🚀 Publish GitHub Release
+      uses: softprops/action-gh-release@v2
       with:
-        name: mathgod-release-apk
-        path: build/app/outputs/flutter-apk/app-release.apk
-        retention-days: 3
+        tag_name: ${{ steps.tag.outputs.tag }}
+        name: "MathGod APK – ${{ steps.tag.outputs.tag }}"
+        files: build/app/outputs/flutter-apk/app-release.apk
+        body: "Automated release from commit ${{ github.sha }}"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
