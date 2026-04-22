@@ -189,7 +189,7 @@ class HomeScreen extends StatelessWidget {
             ),
             const SizedBox(width: 10),
             Text(
-              "100% Offline · No internet needed · Works anywhere",
+              "No . Internet . Needed",
               style: Theme.of(context).textTheme.labelSmall,
             ),
           ],
