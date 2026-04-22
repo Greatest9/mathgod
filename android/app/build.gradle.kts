@@ -1,3 +1,13 @@
+import java.util.Properties
+import java.io.FileInputStream
+
+// Load keystore properties
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("key.properties")
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+}
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -5,9 +15,9 @@ plugins {
 }
 
 android {
-    namespace = "com.mathgod.app"  // Changed from com.example.mathgod
+    namespace = "com.mathgod.app"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = "28.2.13676358"   // Fixed NDK version for Giac
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -18,6 +28,15 @@ android {
         jvmTarget = JavaVersion.VERSION_17.toString()
     }
 
+    signingConfigs {
+        create("release") {
+            keyAlias = keystoreProperties["keyAlias"] as? String
+            keyPassword = keystoreProperties["keyPassword"] as? String
+            storeFile = keystoreProperties["storeFile"]?.let { file(it) }
+            storePassword = keystoreProperties["storePassword"] as? String
+        }
+    }
+
     defaultConfig {
         applicationId = "com.mathgod.app"
         minSdk = flutter.minSdkVersion
@@ -25,14 +44,12 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 
-        // NDK ABI filters (arm64-v8a covers all modern phones)
         ndk {
             abiFilters.add("arm64-v8a")
             abiFilters.add("armeabi-v7a")
             abiFilters.add("x86_64")
         }
 
-        // CMake build for Giac
         externalNativeBuild {
             cmake {
                 cppFlags("-std=c++17 -fexceptions -frtti")
@@ -41,7 +58,6 @@ android {
         }
     }
 
-    // Point to CMakeLists.txt
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
@@ -51,7 +67,7 @@ android {
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")  // ← Changed from debug to release
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(

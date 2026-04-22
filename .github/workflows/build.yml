@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write  # 
+  contents: write
 
 jobs:
   build:
@@ -28,16 +28,25 @@ jobs:
         channel: 'stable'
         cache: true
     
+    - name: 🔑 Decode Keystore
+      run: |
+        echo "${{ secrets.SIGNING_KEYSTORE_BASE64 }}" | base64 -d > android/mathgod-keystore.jks
+      shell: bash
+    
     - name: 📦 Install dependencies
       run: flutter pub get
     
     - name: 🔧 Build APK (Release)
       run: flutter build apk --release
-
+      env:
+        KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
+        KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+        KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+    
     - name: 🏷️ Generate release tag
       id: tag
       run: echo "tag=build-$(date +'%Y%m%d-%H%M%S')" >> $GITHUB_OUTPUT
-
+    
     - name: 🚀 Publish GitHub Release
       uses: softprops/action-gh-release@v2
       with:
