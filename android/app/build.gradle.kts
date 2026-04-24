@@ -30,10 +30,18 @@ android {
 
     signingConfigs {
         create("release") {
-            keyAlias = keystoreProperties["keyAlias"] as? String
-            keyPassword = keystoreProperties["keyPassword"] as? String
-            storeFile = keystoreProperties["storeFile"]?.let { file(it) }
-            storePassword = keystoreProperties["storePassword"] as? String
+            // Priority 1: key.properties (Local) | Priority 2: Env Vars (CI)
+            keyAlias = (keystoreProperties["keyAlias"] as? String) ?: System.getenv("KEY_ALIAS")
+            keyPassword = (keystoreProperties["keyPassword"] as? String) ?: System.getenv("KEY_PASSWORD")
+            storePassword = (keystoreProperties["storePassword"] as? String) ?: System.getenv("KEYSTORE_PASSWORD")
+            
+            // Resolve keystore file path
+            storeFile = if (keystoreProperties.containsKey("storeFile")) {
+                file(keystoreProperties["storeFile"] as String)
+            } else {
+                // This matches the path created in your GitHub YAML
+                file("../mathgod-keystore.jks")
+            }
         }
     }
 
@@ -67,7 +75,7 @@ android {
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release")  // ← Changed from debug to release
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
