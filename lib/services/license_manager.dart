@@ -7,9 +7,6 @@ import 'package:http/http.dart' as http;
 import 'package:device_info_plus/device_info_plus.dart';
 import 'secret_parts.dart';
 
-/// License states — drives the gate UI.
-enum LicenseState { valid, invalid, checking, networkError }
-
 class LicenseManager {
   static final LicenseManager instance = LicenseManager._();
   LicenseManager._();
@@ -19,36 +16,27 @@ class LicenseManager {
   );
   final _deviceInfo = DeviceInfoPlugin();
 
-  // ─── Google Apps Script endpoint (GET) ─────────────────────────────────────
-  // Replace with your deployed web app URL (must end with /exec)
+  // Replace with your deployed Apps Script web app URL (must end with /exec)
   static const String _verifyEndpoint =
-      "https://script.google.com/macros/s/AKfycbwiUrYnmOn6OMSfVOEJYkkJ4Z7S-1ZWRyVmBQfsteEJT4IDYCfc8xOMJ9rY0wvUMZ4W/exec";
+      "https://script.google.com/macros/s/AKfycbxuP-P6uQmjFuub5awiDqQwmv-ioZw4Q8IH52XQEopt99OIqk3jsg9zoOUpAhEd5WKl/exec";
 
-  // ─── Storage keys ───────────────────────────────────────────────────────────
   static const _kValid = 'mg_lv';
   static const _kHash = 'mg_lh';
   static const _kDevice = 'mg_ld';
   static const _kSlot = 'mg_ls';
   static const _kFallback = 'mg_fb';
-  static const _kRawKey =
-      'mg_rk'; // store the raw license key for hash verification
+  static const _kRawKey = 'mg_rk';
 
-  // ─── Key reconstruction (deferred to runtime) ───────────────────────────────
   String get _secretKey => SecretParts.assembled;
 
-  // ────────────────────────────────────────────────────────────────────────────
-  //  PUBLIC API
-  // ────────────────────────────────────────────────────────────────────────────
-
-  /// Check secure storage — true if device already activated.
+  // ────────────────────────────────────────────────────────────
+  // PUBLIC API
+  // ────────────────────────────────────────────────────────────
   Future<bool> isActivated() async {
     try {
       final valid = await _storage.read(key: _kValid);
       if (valid != '1') return false;
-
-      // Verify tamper‑evident hash
       if (!await _verifyHash()) return false;
-
       final storedDevice = await _storage.read(key: _kDevice);
       final currentDevice = await _deviceFingerprint();
       return storedDevice == currentDevice;
@@ -57,7 +45,6 @@ class LicenseManager {
     }
   }
 
-  /// Attempt online activation. Returns a [LicenseResult].
   Future<LicenseResult> activate(String rawKey) async {
     final key = rawKey.trim().toUpperCase();
     if (key.isEmpty) {
@@ -65,26 +52,22 @@ class LicenseManager {
     }
     if (!_looksValid(key)) {
       return LicenseResult.fail(
-        "Invalid key format. Expected: MATH-XXXX-XXXX-XXXX-XXXX",
+        "Invalid key format. Expected: MATH-XXXX-XXXX-XXXX",
       );
     }
 
     try {
       final deviceId = await _deviceFingerprint();
 
-      final uri = Uri.parse(_verifyEndpoint);
+      // GET request with query parameters
+      final uri = Uri.parse(
+        _verifyEndpoint,
+      ).replace(queryParameters: {'license': key, 'device_id': deviceId});
 
-      final response = await http.post(
-        uri,
-        body: {
-          'license': key,
-          'device_id': deviceId,
-          'action': 'activate',
-          'ts': DateTime.now().millisecondsSinceEpoch.toString(),
-        },
-      ).timeout(const Duration(seconds: 15));
+      final response = await http.get(uri).timeout(const Duration(seconds: 15));
 
       if (kDebugMode) {
+        debugPrint('[License] GET ${uri.toString()}');
         debugPrint('[License] Status: ${response.statusCode}');
         debugPrint('[License] Body: ${response.body}');
       }
@@ -109,18 +92,18 @@ class LicenseManager {
     }
   }
 
-  /// Clear local license (support / debug use).
   Future<void> revoke() async {
     await _storage.deleteAll();
   }
 
-  // ────────────────────────────────────────────────────────────────────────────
-  //  PRIVATE
-  // ────────────────────────────────────────────────────────────────────────────
-
+  // ────────────────────────────────────────────────────────────
+  // PRIVATE
+  // ────────────────────────────────────────────────────────────
   bool _looksValid(String key) {
+    // Expects: MATH-XXXX-XXXX-XXXX (3 groups after MATH-)
     return RegExp(
-      r'^MATH-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$',
+      r'^MATH-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$',
+      caseSensitive: false,
     ).hasMatch(key);
   }
 
@@ -131,7 +114,6 @@ class LicenseManager {
       final bytes = utf8.encode(raw);
       return sha256.convert(bytes).toString();
     } catch (_) {
-      // Fallback: stable random stored in secure storage
       var fb = await _storage.read(key: _kFallback);
       if (fb == null) {
         fb = sha256
@@ -146,14 +128,10 @@ class LicenseManager {
   }
 
   Future<void> _persist(String key, String deviceId, int slot) async {
-    // Store the raw key so we can recompute the hash later
     await _storage.write(key: _kRawKey, value: key);
-
-    // Store a tamper‑evident hash so local spoofing is detectable.
     final verifyHash = sha256
         .convert(utf8.encode('$key|$deviceId|$slot|$_secretKey'))
         .toString();
-
     await _storage.write(key: _kValid, value: '1');
     await _storage.write(key: _kHash, value: verifyHash);
     await _storage.write(key: _kDevice, value: deviceId);
@@ -166,14 +144,12 @@ class LicenseManager {
       final storedDevice = await _storage.read(key: _kDevice);
       final storedSlot = await _storage.read(key: _kSlot);
       final storedKey = await _storage.read(key: _kRawKey);
-
       if (storedHash == null ||
           storedDevice == null ||
           storedSlot == null ||
           storedKey == null) {
         return false;
       }
-
       final expected = sha256
           .convert(
             utf8.encode('$storedKey|$storedDevice|$storedSlot|$_secretKey'),
@@ -186,7 +162,6 @@ class LicenseManager {
   }
 }
 
-// ─── Result type ──────────────────────────────────────────────────────────────
 class LicenseResult {
   final bool success;
   final String message;
