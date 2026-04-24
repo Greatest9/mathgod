@@ -283,7 +283,7 @@ class _LicenseScreenState extends State<LicenseScreen>
       ),
       GestureDetector(
         onTap: () async {
-          final uri = Uri.parse('https://selar.co/mathgod');
+          final uri = Uri.parse('https://selar.com/mathgod');
           if (await canLaunchUrl(uri)) {
             await launchUrl(uri, mode: LaunchMode.externalApplication);
           }

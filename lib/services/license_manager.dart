@@ -22,7 +22,7 @@ class LicenseManager {
   // ─── Google Apps Script endpoint (GET) ─────────────────────────────────────
   // Replace with your deployed web app URL (must end with /exec)
   static const String _verifyEndpoint =
-      "https://script.google.com/macros/s/AKfycbwudF7ZC69vZjq-wcdHmhtqA0X----HJL6r8iuySHwsggqcYDtRtcmtCzRcx5yMIoYF/exec";
+      "https://script.google.com/macros/s/AKfycbz8yw6Hllo1zIMsrBhshW92w2MT5O2LqHqoW4k6CKrDFftCbmDav1usYhSB0xDM2-il/exec";
 
   // ─── Storage keys ───────────────────────────────────────────────────────────
   static const _kValid = 'mg_lv';
@@ -65,24 +65,24 @@ class LicenseManager {
     }
     if (!_looksValid(key)) {
       return LicenseResult.fail(
-        "Invalid key format. Expected: MATH-XXXX-XXXX-XXXX",
+        "Invalid key format. Expected: MATH-XXXX-XXXX-XXXX-XXXX",
       );
     }
 
     try {
       final deviceId = await _deviceFingerprint();
 
-      // Build URL with query parameters (GET request)
-      final uri = Uri.parse(_verifyEndpoint).replace(
-        queryParameters: {
+      final uri = Uri.parse(_verifyEndpoint);
+
+      final response = await http.post(
+        uri,
+        body: {
           'license': key,
           'device_id': deviceId,
           'action': 'activate',
           'ts': DateTime.now().millisecondsSinceEpoch.toString(),
         },
-      );
-
-      final response = await http.get(uri).timeout(const Duration(seconds: 15));
+      ).timeout(const Duration(seconds: 15));
 
       if (kDebugMode) {
         debugPrint('[License] Status: ${response.statusCode}');
@@ -120,7 +120,7 @@ class LicenseManager {
 
   bool _looksValid(String key) {
     return RegExp(
-      r'^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$',
+      r'^MATH-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$',
     ).hasMatch(key);
   }
 
