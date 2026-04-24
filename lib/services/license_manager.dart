@@ -22,7 +22,7 @@ class LicenseManager {
   // ─── Google Apps Script endpoint (GET) ─────────────────────────────────────
   // Replace with your deployed web app URL (must end with /exec)
   static const String _verifyEndpoint =
-      "https://script.google.com/macros/s/AKfycbz8yw6Hllo1zIMsrBhshW92w2MT5O2LqHqoW4k6CKrDFftCbmDav1usYhSB0xDM2-il/exec";
+      "https://script.google.com/macros/s/AKfycbwGdc9Xo23Yw96wcdjIVb1P5ZssKpNTSqUhiHRFaoQEj5uelUyCI2OXYa7YUaLJORzz/exec";
 
   // ─── Storage keys ───────────────────────────────────────────────────────────
   static const _kValid = 'mg_lv';
