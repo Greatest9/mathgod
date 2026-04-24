@@ -25,6 +25,7 @@ class _SolverScreenState extends State<SolverScreen> {
   final _screenshotCtrl = ScreenshotController();
   Solution? _solution;
   bool _loading = false;
+  bool _approximate = false;
 
   @override
   void initState() {
@@ -49,7 +50,7 @@ class _SolverScreenState extends State<SolverScreen> {
     setState(() => _loading = true);
     // Run solver off the main thread so complex Giac calls don't jank the UI
     final solution = await Future.microtask(
-      () => SolverEngine.instance.solve(input),
+      () => SolverEngine.instance.solve(input, approximate: _approximate),
     );
     if (!mounted) return;
     setState(() {
@@ -132,6 +133,38 @@ class _SolverScreenState extends State<SolverScreen> {
               const SizedBox(width: 8),
               Text("Solver", style: Theme.of(context).textTheme.titleLarge),
               const Spacer(),
+              // Exact / Decimal toggle
+              GestureDetector(
+                onTap: () {
+                  setState(() => _approximate = !_approximate);
+                  if (_solution != null) _solve();
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: _approximate
+                        ? const Color(0xFF00E5AA).withOpacity(0.15)
+                        : const Color(0xFF7C6FFF).withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: _approximate
+                          ? const Color(0xFF00E5AA).withOpacity(0.4)
+                          : const Color(0xFF7C6FFF).withOpacity(0.4),
+                    ),
+                  ),
+                  child: Text(
+                    _approximate ? '≈ Decimal' : '= Exact',
+                    style: TextStyle(
+                      color: _approximate
+                          ? const Color(0xFF00E5AA)
+                          : const Color(0xFF7C6FFF),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
               if (_solution != null) ...[
                 // Share button
                 IconButton(
@@ -378,18 +411,21 @@ class _ShareableResultCard extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Center(
-            child: Math.tex(
-              s.resultLatex,
-              textStyle: const TextStyle(
-                fontSize: 28,
-                color: Color(0xFFF0F0FF),
-              ),
-              onErrorFallback: (_) => Text(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Math.tex(
                 s.resultLatex,
-                style: const TextStyle(
-                  fontFamily: 'IBMPlexMono',
-                  color: Color(0xFF00E5AA),
-                  fontSize: 18,
+                textStyle: const TextStyle(
+                  fontSize: 28,
+                  color: Color(0xFFF0F0FF),
+                ),
+                onErrorFallback: (_) => Text(
+                  s.resultLatex,
+                  style: const TextStyle(
+                    fontFamily: 'IBMPlexMono',
+                    color: Color(0xFF00E5AA),
+                    fontSize: 18,
+                  ),
                 ),
               ),
             ),
@@ -616,18 +652,21 @@ class _StepCardState extends State<_StepCard> {
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Center(
-                      child: Math.tex(
-                        s.latex,
-                        textStyle: const TextStyle(
-                          fontSize: 15,
-                          color: Color(0xFFF0F0FF),
-                        ),
-                        onErrorFallback: (_) => SelectableText(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Math.tex(
                           s.latex,
-                          style: const TextStyle(
-                            fontFamily: 'IBMPlexMono',
-                            color: Color(0xFF00E5AA),
-                            fontSize: 13,
+                          textStyle: const TextStyle(
+                            fontSize: 15,
+                            color: Color(0xFFF0F0FF),
+                          ),
+                          onErrorFallback: (_) => SelectableText(
+                            s.latex,
+                            style: const TextStyle(
+                              fontFamily: 'IBMPlexMono',
+                              color: Color(0xFF00E5AA),
+                              fontSize: 13,
+                            ),
                           ),
                         ),
                       ),

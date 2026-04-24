@@ -21,6 +21,8 @@ dependencies:
   device_info_plus: ^9.1.0
   ffi: ^2.1.2
   url_launcher: ^6.2.5
+  fl_chart: ^0.66.0
+  math_expressions: ^2.3.1
   # Share result as image
   share_plus: ^10.0.2
   screenshot: ^3.0.0

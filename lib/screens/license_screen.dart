@@ -1,6 +1,7 @@
 // lib/screens/license_screen.dart
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/license_manager.dart';
 import 'root_screen.dart';
 
@@ -281,8 +282,11 @@ class _LicenseScreenState extends State<LicenseScreen>
         style: GoogleFonts.ibmPlexSans(color: _textSub, fontSize: 13),
       ),
       GestureDetector(
-        onTap: () {
-          // TODO: launch("https://selar.co/mathgod")
+        onTap: () async {
+          final uri = Uri.parse('https://selar.co/mathgod');
+          if (await canLaunchUrl(uri)) {
+            await launchUrl(uri, mode: LaunchMode.externalApplication);
+          }
         },
         child: Text(
           "Buy on Selar →",

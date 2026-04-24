@@ -3,10 +3,71 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'solver_screen.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
-  static const _domains = [
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabCtrl = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabCtrl.dispose();
+    super.dispose();
+  }
+
+  // ── Secondary School domains ────────────────────────────────────────────────
+  static const _secondaryDomains = [
+    (
+      sym: "θ",
+      name: "Trigonometry",
+      sub: "SOHCAHTOA · Identities · Unit Circle",
+      col: Color(0xFF00BFFF),
+    ),
+    (
+      sym: "x²",
+      name: "Algebra",
+      sub: "Quadratics · Factoring · Equations",
+      col: Color(0xFF7C6FFF),
+    ),
+    (
+      sym: "σ",
+      name: "Statistics",
+      sub: "Mean · Median · Probability",
+      col: Color(0xFFFF8C00),
+    ),
+    (
+      sym: "ℕ",
+      name: "Number Theory",
+      sub: "Primes · GCD · LCM · Factorize",
+      col: Color(0xFF4ECDC4),
+    ),
+    (
+      sym: "∠",
+      name: "Geometry",
+      sub: "Area · Volume · Angles · Pythagoras",
+      col: Color(0xFFFFB347),
+    ),
+    (
+      sym: "ƒ",
+      name: "Functions",
+      sub: "Graphs · Domain · Range · Inverse",
+      col: Color(0xFF98FB98),
+    ),
+  ];
+
+  // ── A-Level / University domains ────────────────────────────────────────────
+  static const _alevelDomains = [
     (
       sym: "∫",
       name: "Calculus",
@@ -28,14 +89,8 @@ class HomeScreen extends StatelessWidget {
     (
       sym: "ε",
       name: "Real Analysis",
-      sub: "Series · Convergence · Epsilon-Delta",
+      sub: "Series · Convergence · Taylor",
       col: Color(0xFFFFB347),
-    ),
-    (
-      sym: "ℕ",
-      name: "Number Theory",
-      sub: "Primes · Modular · Cryptography",
-      col: Color(0xFF4ECDC4),
     ),
     (
       sym: "⊕",
@@ -44,22 +99,16 @@ class HomeScreen extends StatelessWidget {
       col: Color(0xFFB47AEA),
     ),
     (
-      sym: "σ",
-      name: "Statistics",
-      sub: "Probability · Distributions · Bayes",
-      col: Color(0xFFFF8C00),
-    ),
-    (
-      sym: "θ",
-      name: "Trigonometry",
-      sub: "Identities · Unit Circle · Inverse",
-      col: Color(0xFF00BFFF),
-    ),
-    (
       sym: "ℂ",
       name: "Complex Analysis",
       sub: "Euler · Modulus · De Moivre",
       col: Color(0xFFFF69B4),
+    ),
+    (
+      sym: "∇",
+      name: "Vector Calculus",
+      sub: "Grad · Curl · Div · Stokes",
+      col: Color(0xFFDDA0DD),
     ),
     (
       sym: "∞",
@@ -68,14 +117,24 @@ class HomeScreen extends StatelessWidget {
       col: Color(0xFF98FB98),
     ),
     (
-      sym: "∇",
-      name: "Vector Calculus",
-      sub: "Grad · Curl · Div · Stokes",
-      col: Color(0xFFDDA0DD),
+      sym: "ℒ",
+      name: "Laplace / Fourier",
+      sub: "Transforms · Engineering · Signals",
+      col: Color(0xFF00CED1),
     ),
   ];
 
-  static const _quickExamples = [
+  // ── Quick examples per level ────────────────────────────────────────────────
+  static const _secondaryExamples = [
+    "sin(pi/6)",
+    "factorize(360)",
+    "gcd(48,18)",
+    "mean([1,2,3,4,5])",
+    "isprime(97)",
+    "lcm(4,6)",
+  ];
+
+  static const _alevelExamples = [
     "d/dx[x^5]",
     "int(x^3)",
     "lim(sin(x)/x, x, 0)",
@@ -83,43 +142,141 @@ class HomeScreen extends StatelessWidget {
     "eigen([[4,1],[2,3]])",
     "ode(y'' + 4y = 0)",
     "series(1/n^2)",
-    "isprime(97)",
-    "sin(pi/6)",
-    "complex(3+4i)",
-    "mean([1,2,3,4,5])",
-    "factorize(360)",
+    "laplace(e^(-2t))",
+    "taylor(sin(x), 6)",
   ];
 
   @override
   Widget build(BuildContext context) {
     return SafeArea(
-      child: CustomScrollView(
-        slivers: [
+      child: NestedScrollView(
+        headerSliverBuilder: (_, __) => [
           SliverToBoxAdapter(child: _buildHeader(context)),
           SliverToBoxAdapter(child: _buildOfflineBadge(context)),
-          SliverToBoxAdapter(child: _buildExamples(context)),
-          SliverToBoxAdapter(child: _buildDomainHeader(context)),
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            sliver: SliverGrid(
-              delegate: SliverChildBuilderDelegate(
-                (_, i) => _DomainCard(d: _domains[i])
-                    .animate(delay: (40 * i).ms)
-                    .fadeIn()
-                    .scale(begin: const Offset(0.95, 0.95)),
-                childCount: _domains.length,
-              ),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                mainAxisSpacing: 10,
-                crossAxisSpacing: 10,
-                childAspectRatio: 1.55,
-              ),
+          SliverToBoxAdapter(child: _buildTabBar(context)),
+        ],
+        body: TabBarView(
+          controller: _tabCtrl,
+          children: [
+            _buildLevel(
+              context,
+              domains: _secondaryDomains,
+              examples: _secondaryExamples,
+              label: "📚 Core Topics",
+            ),
+            _buildLevel(
+              context,
+              domains: _alevelDomains,
+              examples: _alevelExamples,
+              label: "🎓 Advanced Topics",
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTabBar(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF161624),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFF232336)),
+        ),
+        child: TabBar(
+          controller: _tabCtrl,
+          indicatorSize: TabBarIndicatorSize.tab,
+          dividerColor: Colors.transparent,
+          indicator: BoxDecoration(
+            color: const Color(0xFF7C6FFF),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          labelColor: Colors.white,
+          unselectedLabelColor: const Color(0xFF7777AA),
+          labelStyle: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+          tabs: const [
+            Tab(text: "Secondary School"),
+            Tab(text: "A-Level / Uni"),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLevel(
+    BuildContext context, {
+    required List<({String sym, String name, String sub, Color col})> domains,
+    required List<String> examples,
+    required String label,
+  }) {
+    return CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Try These:",
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: examples
+                      .map(
+                        (e) => _ExampleChip(
+                          label: e,
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  SolverScreen(initialInput: e),
+                            ),
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ],
             ),
           ),
-          const SliverToBoxAdapter(child: SizedBox(height: 32)),
-        ],
-      ),
+        ),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+            child: Text(
+              label,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+          ),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          sliver: SliverGrid(
+            delegate: SliverChildBuilderDelegate(
+              (_, i) => _DomainCard(d: domains[i])
+                  .animate(delay: (40 * i).ms)
+                  .fadeIn()
+                  .scale(begin: const Offset(0.95, 0.95)),
+              childCount: domains.length,
+            ),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              mainAxisSpacing: 10,
+              crossAxisSpacing: 10,
+              childAspectRatio: 1.55,
+            ),
+          ),
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 32)),
+      ],
     );
   }
 
@@ -178,7 +335,8 @@ class HomeScreen extends StatelessWidget {
         decoration: BoxDecoration(
           color: const Color(0xFF00E5AA).withOpacity(0.07),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFF00E5AA).withOpacity(0.2)),
+          border:
+              Border.all(color: const Color(0xFF00E5AA).withOpacity(0.2)),
         ),
         child: Row(
           children: [
@@ -195,45 +353,6 @@ class HomeScreen extends StatelessWidget {
           ],
         ),
       ).animate().fadeIn(delay: 200.ms),
-    );
-  }
-
-  Widget _buildExamples(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text("Try These:", style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _quickExamples
-                .map(
-                  (e) => _ExampleChip(
-                    label: e,
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => SolverScreen(initialInput: e),
-                      ),
-                    ),
-                  ),
-                )
-                .toList(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDomainHeader(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-      child: Text(
-        "All Domains",
-        style: Theme.of(context).textTheme.titleMedium,
-      ),
     );
   }
 }
@@ -255,6 +374,10 @@ class _DomainCard extends StatelessWidget {
     'Complex Analysis': 'complex(3+4i)',
     'Topology': 'topology(compact)',
     'Vector Calculus': 'curl(F)',
+    'Algebra': 'solve(x^2-5x+6=0)',
+    'Geometry': 'sin(pi/4)',
+    'Functions': 'd/dx[x^2]',
+    'Laplace / Fourier': 'laplace(e^(-2t))',
   };
 
   @override
