@@ -41,10 +41,38 @@ class SolverEngine {
     final input = parseWordProblem(raw.trim());
     if (input.isEmpty) return Solution.unknown(input);
 
+    Solution? giacSolution;
     if (_useGiac) {
-      return _solveViaGiac(input, approximate: approximate);
+      giacSolution = _solveViaGiac(input, approximate: approximate);
     }
-    return _solveViaPatterns(input);
+
+    final patternSolution = _solveViaPatterns(input);
+
+    if (giacSolution != null) {
+      if (patternSolution.operation == "Unknown" || patternSolution.isUnsolvable) {
+        return giacSolution;
+      }
+
+      final combinedSteps = List<SolutionStep>.from(patternSolution.steps);
+      combinedSteps.add(SolutionStep(
+        title: 'CAS Final Verification',
+        latex: giacSolution.resultLatex,
+        explanation: 'Exact final result computed by the offline Giac CAS engine.',
+        rule: 'Giac CAS',
+      ));
+
+      return Solution(
+        input: input,
+        domain: patternSolution.domain,
+        operation: patternSolution.operation,
+        resultLatex: giacSolution.resultLatex,
+        resultReadable: giacSolution.resultReadable,
+        steps: combinedSteps,
+        tip: patternSolution.tip ?? giacSolution.tip,
+      );
+    }
+
+    return patternSolution;
   }
 
   // ═══ GIAC PATH ═══════════════════════════════════════════════════════════════
@@ -69,7 +97,7 @@ class SolverEngine {
   //   normal(expr)        simplify
   //   latex(expr)         render to LaTeX string
 
-  Solution _solveViaGiac(String input, {bool approximate = false}) {
+  Solution? _solveViaGiac(String input, {bool approximate = false}) {
     final lower = input.toLowerCase();
 
     // ── Determine Giac command ──────────────────────────────────────────────
@@ -190,8 +218,8 @@ class SolverEngine {
       final rawResult = GiacFFI.instance.solve(giacCmd);
 
       if (rawResult.startsWith('Error:')) {
-        // CAS failed — fall back to pattern engine
-        return _solveViaPatterns(input);
+        // CAS failed — fallback handled in solve()
+        return null;
       }
 
       // Also grab LaTeX rendering (a second Giac call)
@@ -213,7 +241,7 @@ class SolverEngine {
         tip: _tipFor(operation),
       );
     } catch (e) {
-      return _solveViaPatterns(input);
+      return null;
     }
   }
 
