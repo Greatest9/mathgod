@@ -23,7 +23,6 @@ dependencies:
   url_launcher: ^6.2.5
   fl_chart: ^0.66.0
   math_expressions: ^2.3.1
-  # Share result as image
   share_plus: ^10.0.2
   screenshot: ^3.0.0
   path_provider: ^2.1.4
@@ -32,6 +31,21 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  # Added for icon generation
+  flutter_launcher_icons: ^0.13.1
+
+# Configuration for the App Logo
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/mathgod_logo.png"
+  # This makes the icon look good on modern Android devices
+  adaptive_icon_background: "#121212" # Dark background to match a math theme
+  adaptive_icon_foreground: "assets/mathgod_logo.png"
 
 flutter:
   uses-material-design: true
+  # Added to register your image assets
+  assets:
+    - assets/mathgod_logo.png
+    - assets/mathgod_logo.svg
