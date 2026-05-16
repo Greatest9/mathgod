@@ -1,17 +1,20 @@
-# mathgod
+# MathGod 🧮
 
-A new Flutter project.
+MathGod is an offline-first, high-performance symbolic mathematics and calculus solver built for mobile devices. 
 
-## Getting Started
+The primary mission of this project is educational empowerment—providing university students with a robust Computer Algebra System (CAS) that runs completely offline, mitigating the barriers of high data costs and unstable internet connectivity.
 
-This project is a starting point for a Flutter application.
+## 🚀 The Engineering Behind MathGod
 
-A few resources to get you started if this is your first Flutter project:
+This application represents a novel integration architecture combining modern mobile UI frameworks with low-level symbolic math engines:
+* **Frontend:** Built with Flutter using Dart FFI to bridge high-performance native layers.
+* **Core Computing Kernel:** Powered by the incredible **Giac/Xcas** C++ library developed by Bernard Parisse.
+* **Native Compilation:** Implemented via custom `CMakeLists.txt` configurations to compile the native Giac source into an optimized Android Shared Object (`.so`) binary using the Android NDK.
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+## ⚖️ Open Source & Licensing
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+In strict compliance with the **GNU General Public License v3.0 (GPLv3)**, the complete integration layer, build scripts, and interface mechanics for this application are fully open-sourced here for the global developer community. 
+
+### Credits & Attribution
+* **Giac/Xcas Core:** Developed by Bernard Parisse / Université Grenoble Alpes. 
+* Core source repository and documentation can be found at: [Institut Fourier - Giac](https://www-fourier.univ-grenoble-alpes.fr/~parisse/giac.html)
