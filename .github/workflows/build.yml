@@ -1,12 +1,9 @@
-name: Build Math God APK
+name: Test Math God Build
 
 on:
   push:
     branches: [ "main", "master" ]
   workflow_dispatch:
-
-permissions:
-  contents: write
 
 jobs:
   build:
@@ -36,37 +33,9 @@ jobs:
     - name: 📦 Install dependencies
       run: flutter pub get
     
-    - name: 🔧 Build APK (Release)
+    - name: 🔧 Test Build APK (Release Validation)
       run: flutter build apk --release
       env:
         KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
         KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
         KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
-    
-    - name: 🏷️ Generate release tag
-      id: tag
-      run: echo "tag=build-$(date +'%Y%m%d-%H%M%S')" >> $GITHUB_OUTPUT
-    
-    - name: 🚀 Publish GitHub Release
-      uses: softprops/action-gh-release@v2
-      with:
-        tag_name: ${{ steps.tag.outputs.tag }}
-        name: "MathGod APK – ${{ steps.tag.outputs.tag }}"
-        files: build/app/outputs/flutter-apk/app-release.apk
-        body: |
-          ## Math God APK
-          
-          - **Build Date:** ${{ steps.tag.outputs.tag }}
-          - **Commit:** ${{ github.sha }}
-          - **Branch:** ${{ github.ref_name }}
-          
-          ### Installation
-          1. Download the APK below
-          2. Enable "Install from unknown sources" on your Android device
-          3. Install and activate with your license key
-          
-          ### Need help?
-          Contact: mathgodsupport@gmail.com
-        make_latest: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
