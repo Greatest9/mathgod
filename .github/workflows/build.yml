@@ -1,0 +1,41 @@
+name: Test Math God Build
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+    
+    - name: 🐧 Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+    
+    - name: 📱 Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        channel: 'stable'
+        cache: true
+    
+    - name: 🔑 Decode Keystore
+      run: |
+        echo "${{ secrets.SIGNING_KEYSTORE_BASE64 }}" | base64 -d > android/mathgod-keystore.jks
+      shell: bash
+    
+    - name: 📦 Install dependencies
+      run: flutter pub get
+    
+    - name: 🔧 Test Build APK (Release Validation)
+      run: flutter build apk --release
+      env:
+        KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
+        KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+        KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}

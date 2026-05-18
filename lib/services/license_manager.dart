@@ -7,9 +7,6 @@ import 'package:http/http.dart' as http;
 import 'package:device_info_plus/device_info_plus.dart';
 import 'secret_parts.dart';
 
-/// License states — drives the gate UI.
-enum LicenseState { valid, invalid, checking, networkError }
-
 class LicenseManager {
   static final LicenseManager instance = LicenseManager._();
   LicenseManager._();
@@ -19,32 +16,27 @@ class LicenseManager {
   );
   final _deviceInfo = DeviceInfoPlugin();
 
-  // ─── Google Apps Script endpoint ────────────────────────────────────────────
-  // Replace this URL after you deploy your Apps Script web app.
-  // Keep the URL only in this one place — nowhere else in the codebase.
+  // Replace with your deployed Apps Script web app URL (must end with /exec)
   static const String _verifyEndpoint =
-      "https://script.google.com/macros/s/AKfycbwiUrYnmOn6OMSfVOEJYkkJ4Z7S-1ZWRyVmBQfsteEJT4IDYCfc8xOMJ9rY0wvUMZ4W/exec";
+      "https://script.google.com/macros/s/AKfycbxuP-P6uQmjFuub5awiDqQwmv-ioZw4Q8IH52XQEopt99OIqk3jsg9zoOUpAhEd5WKl/exec";
 
-  // ─── Storage keys ───────────────────────────────────────────────────────────
   static const _kValid = 'mg_lv';
   static const _kHash = 'mg_lh';
   static const _kDevice = 'mg_ld';
   static const _kSlot = 'mg_ls';
   static const _kFallback = 'mg_fb';
+  static const _kRawKey = 'mg_rk';
 
-  // ─── Key reconstruction (deferred to runtime) ───────────────────────────────
   String get _secretKey => SecretParts.assembled;
 
-  // ────────────────────────────────────────────────────────────────────────────
-  //  PUBLIC API
-  // ────────────────────────────────────────────────────────────────────────────
-
-  /// Check secure storage — true if device already activated.
+  // ────────────────────────────────────────────────────────────
+  // PUBLIC API
+  // ────────────────────────────────────────────────────────────
   Future<bool> isActivated() async {
     try {
       final valid = await _storage.read(key: _kValid);
       if (valid != '1') return false;
-
+      if (!await _verifyHash()) return false;
       final storedDevice = await _storage.read(key: _kDevice);
       final currentDevice = await _deviceFingerprint();
       return storedDevice == currentDevice;
@@ -53,7 +45,6 @@ class LicenseManager {
     }
   }
 
-  /// Attempt online activation. Returns a [LicenseResult].
   Future<LicenseResult> activate(String rawKey) async {
     final key = rawKey.trim().toUpperCase();
     if (key.isEmpty) {
@@ -68,18 +59,18 @@ class LicenseManager {
     try {
       final deviceId = await _deviceFingerprint();
 
-      final response = await http
-          .post(
-            Uri.parse(_verifyEndpoint),
-            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-            body: {
-              'license': key,
-              'device_id': deviceId,
-              'action': 'activate',
-              'ts': DateTime.now().millisecondsSinceEpoch.toString(),
-            },
-          )
-          .timeout(const Duration(seconds: 12));
+      // GET request with query parameters
+      final uri = Uri.parse(
+        _verifyEndpoint,
+      ).replace(queryParameters: {'license': key, 'device_id': deviceId});
+
+      final response = await http.get(uri).timeout(const Duration(seconds: 15));
+
+      if (kDebugMode) {
+        debugPrint('[License] GET ${uri.toString()}');
+        debugPrint('[License] Status: ${response.statusCode}');
+        debugPrint('[License] Body: ${response.body}');
+      }
 
       if (response.statusCode != 200) {
         return LicenseResult.networkError();
@@ -101,19 +92,18 @@ class LicenseManager {
     }
   }
 
-  /// Clear local license (support / debug use).
   Future<void> revoke() async {
     await _storage.deleteAll();
   }
 
-  // ────────────────────────────────────────────────────────────────────────────
-  //  PRIVATE
-  // ────────────────────────────────────────────────────────────────────────────
-
+  // ────────────────────────────────────────────────────────────
+  // PRIVATE
+  // ────────────────────────────────────────────────────────────
   bool _looksValid(String key) {
-    // Accept: MATH-XXXX-XXXX-XXXX  or any 4-group dash-separated key
+    // Expects: MATH-XXXX-XXXX-XXXX (3 groups after MATH-)
     return RegExp(
-      r'^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$',
+      r'^MATH-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$',
+      caseSensitive: false,
     ).hasMatch(key);
   }
 
@@ -124,7 +114,6 @@ class LicenseManager {
       final bytes = utf8.encode(raw);
       return sha256.convert(bytes).toString();
     } catch (_) {
-      // Fallback: stable random stored in secure storage
       var fb = await _storage.read(key: _kFallback);
       if (fb == null) {
         fb = sha256
@@ -139,7 +128,7 @@ class LicenseManager {
   }
 
   Future<void> _persist(String key, String deviceId, int slot) async {
-    // Store a tamper-evident hash so local spoofing is detectable.
+    await _storage.write(key: _kRawKey, value: key);
     final verifyHash = sha256
         .convert(utf8.encode('$key|$deviceId|$slot|$_secretKey'))
         .toString();
@@ -148,9 +137,31 @@ class LicenseManager {
     await _storage.write(key: _kDevice, value: deviceId);
     await _storage.write(key: _kSlot, value: slot.toString());
   }
+
+  Future<bool> _verifyHash() async {
+    try {
+      final storedHash = await _storage.read(key: _kHash);
+      final storedDevice = await _storage.read(key: _kDevice);
+      final storedSlot = await _storage.read(key: _kSlot);
+      final storedKey = await _storage.read(key: _kRawKey);
+      if (storedHash == null ||
+          storedDevice == null ||
+          storedSlot == null ||
+          storedKey == null) {
+        return false;
+      }
+      final expected = sha256
+          .convert(
+            utf8.encode('$storedKey|$storedDevice|$storedSlot|$_secretKey'),
+          )
+          .toString();
+      return storedHash == expected;
+    } catch (_) {
+      return false;
+    }
+  }
 }
 
-// ─── Result type ──────────────────────────────────────────────────────────────
 class LicenseResult {
   final bool success;
   final String message;

@@ -1,8 +1,13 @@
 // lib/screens/solver_screen.dart
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
+import 'package:screenshot/screenshot.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
 import '../engine/solver_engine.dart';
 import '../models/solution.dart';
 
@@ -17,8 +22,10 @@ class SolverScreen extends StatefulWidget {
 class _SolverScreenState extends State<SolverScreen> {
   final _ctrl = TextEditingController();
   final _focus = FocusNode();
+  final _screenshotCtrl = ScreenshotController();
   Solution? _solution;
   bool _loading = false;
+  bool _approximate = false;
 
   @override
   void initState() {
@@ -36,18 +43,53 @@ class _SolverScreenState extends State<SolverScreen> {
     super.dispose();
   }
 
-  void _solve() {
+  Future<void> _solve() async {
     final input = _ctrl.text.trim();
     if (input.isEmpty) return;
     _focus.unfocus();
     setState(() => _loading = true);
-    Future.delayed(300.ms, () {
-      if (!mounted) return;
-      setState(() {
-        _solution = SolverEngine.instance.solve(input);
-        _loading = false;
-      });
+    // Run solver off the main thread so complex Giac calls don't jank the UI
+    final solution = await Future.microtask(
+      () => SolverEngine.instance.solve(input, approximate: _approximate),
+    );
+    if (!mounted) return;
+    setState(() {
+      _solution = solution;
+      _loading = false;
     });
+  }
+
+  Future<void> _shareResult() async {
+    if (_solution == null) return;
+    try {
+      // Capture the result card as PNG
+      final Uint8List? imageBytes = await _screenshotCtrl.capture(
+        pixelRatio: 2.5,
+      );
+      if (imageBytes == null) return;
+
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/mathgod_result.png');
+      await file.writeAsBytes(imageBytes);
+
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        text:
+            'Solved with Math God 🧠\n'
+            'Input: ${_solution!.input}\n'
+            'Result: ${_solution!.resultReadable}',
+        subject: 'Math God — ${_solution!.operation}',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not share: $e'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -91,7 +133,54 @@ class _SolverScreenState extends State<SolverScreen> {
               const SizedBox(width: 8),
               Text("Solver", style: Theme.of(context).textTheme.titleLarge),
               const Spacer(),
-              if (_solution != null)
+              // Exact / Decimal toggle
+              GestureDetector(
+                onTap: () {
+                  setState(() => _approximate = !_approximate);
+                  if (_solution != null) _solve();
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: _approximate
+                        ? const Color(0xFF00E5AA).withOpacity(0.15)
+                        : const Color(0xFF7C6FFF).withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: _approximate
+                          ? const Color(0xFF00E5AA).withOpacity(0.4)
+                          : const Color(0xFF7C6FFF).withOpacity(0.4),
+                    ),
+                  ),
+                  child: Text(
+                    _approximate ? '≈ Decimal' : '= Exact',
+                    style: TextStyle(
+                      color: _approximate
+                          ? const Color(0xFF00E5AA)
+                          : const Color(0xFF7C6FFF),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              if (_solution != null) ...[
+                // Share button
+                IconButton(
+                  icon: const Icon(
+                    Icons.share_rounded,
+                    color: Color(0xFF7C6FFF),
+                    size: 20,
+                  ),
+                  onPressed: _shareResult,
+                  tooltip: 'Share result',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 36,
+                    minHeight: 36,
+                  ),
+                ),
                 TextButton(
                   onPressed: () => setState(() {
                     _solution = null;
@@ -102,6 +191,7 @@ class _SolverScreenState extends State<SolverScreen> {
                     style: TextStyle(color: Color(0xFF7777AA), fontSize: 13),
                   ),
                 ),
+              ],
             ],
           ),
           const SizedBox(height: 12),
@@ -234,12 +324,16 @@ class _SolverScreenState extends State<SolverScreen> {
 
   Widget _buildResult() {
     final s = _solution!;
+    // Wrap the result card in Screenshot so we can capture it for sharing
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _ResultCard(solution: s),
+          Screenshot(
+            controller: _screenshotCtrl,
+            child: _ShareableResultCard(solution: s),
+          ),
           const SizedBox(height: 20),
           if (s.tip != null) _TipCard(tip: s.tip!),
           if (s.tip != null) const SizedBox(height: 16),
@@ -250,9 +344,10 @@ class _SolverScreenState extends State<SolverScreen> {
   }
 }
 
-class _ResultCard extends StatelessWidget {
+// ─── Shareable result card (wrapped in Screenshot) ────────────────────────────
+class _ShareableResultCard extends StatelessWidget {
   final Solution solution;
-  const _ResultCard({required this.solution});
+  const _ShareableResultCard({required this.solution});
 
   @override
   Widget build(BuildContext context) {
@@ -260,6 +355,7 @@ class _ResultCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
+        color: const Color(0xFF10101C), // solid bg so PNG looks clean
         gradient: LinearGradient(
           colors: [
             const Color(0xFF7C6FFF).withOpacity(0.1),
@@ -315,18 +411,21 @@ class _ResultCard extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Center(
-            child: Math.tex(
-              s.resultLatex,
-              textStyle: const TextStyle(
-                fontSize: 28,
-                color: Color(0xFFF0F0FF),
-              ),
-              onErrorFallback: (_) => Text(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Math.tex(
                 s.resultLatex,
-                style: const TextStyle(
-                  fontFamily: 'IBMPlexMono',
-                  color: Color(0xFF00E5AA),
-                  fontSize: 18,
+                textStyle: const TextStyle(
+                  fontSize: 28,
+                  color: Color(0xFFF0F0FF),
+                ),
+                onErrorFallback: (_) => Text(
+                  s.resultLatex,
+                  style: const TextStyle(
+                    fontFamily: 'IBMPlexMono',
+                    color: Color(0xFF00E5AA),
+                    fontSize: 18,
+                  ),
                 ),
               ),
             ),
@@ -344,6 +443,19 @@ class _ResultCard extends StatelessWidget {
               ),
             ),
           ],
+          const SizedBox(height: 12),
+          // Watermark so shared images are attributed
+          Center(
+            child: Text(
+              'Math God  ·  math.god',
+              style: TextStyle(
+                color: const Color(0xFF7C6FFF).withOpacity(0.5),
+                fontSize: 10,
+                letterSpacing: 1.0,
+                fontFamily: 'IBMPlexMono',
+              ),
+            ),
+          ),
         ],
       ),
     ).animate().fadeIn(duration: 350.ms).slideY(begin: 0.06);
@@ -431,7 +543,7 @@ class _StepsSection extends StatelessWidget {
 
 class _StepCard extends StatefulWidget {
   final int num;
-  final dynamic step;
+  final SolutionStep step; // ← was `dynamic`, now properly typed
   const _StepCard({required this.num, required this.step});
 
   @override
@@ -540,18 +652,21 @@ class _StepCardState extends State<_StepCard> {
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Center(
-                      child: Math.tex(
-                        s.latex,
-                        textStyle: const TextStyle(
-                          fontSize: 15,
-                          color: Color(0xFFF0F0FF),
-                        ),
-                        onErrorFallback: (_) => SelectableText(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Math.tex(
                           s.latex,
-                          style: const TextStyle(
-                            fontFamily: 'IBMPlexMono',
-                            color: Color(0xFF00E5AA),
-                            fontSize: 13,
+                          textStyle: const TextStyle(
+                            fontSize: 15,
+                            color: Color(0xFFF0F0FF),
+                          ),
+                          onErrorFallback: (_) => SelectableText(
+                            s.latex,
+                            style: const TextStyle(
+                              fontFamily: 'IBMPlexMono',
+                              color: Color(0xFF00E5AA),
+                              fontSize: 13,
+                            ),
                           ),
                         ),
                       ),

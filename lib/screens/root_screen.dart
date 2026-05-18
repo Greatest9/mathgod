@@ -4,6 +4,7 @@ import 'home_screen.dart';
 import 'solver_screen.dart';
 import 'library_screen.dart';
 import 'unsolved_screen.dart';
+import 'about_screen.dart';
 
 class RootScreen extends StatefulWidget {
   const RootScreen({super.key});
@@ -39,6 +40,22 @@ class _RootScreenState extends State<RootScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        title: const Text("Math God"),
+        backgroundColor: const Color(0xFF10101C),
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline, color: Color(0xFF7777AA)),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AboutScreen()),
+              );
+            },
+          ),
+        ],
+      ),
       body: IndexedStack(index: _idx, children: _screens),
       bottomNavigationBar: _buildNav(),
     );

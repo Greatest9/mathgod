@@ -1,6 +1,8 @@
 // lib/screens/license_screen.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/license_manager.dart';
 import 'root_screen.dart';
 
@@ -201,7 +203,7 @@ class _LicenseScreenState extends State<LicenseScreen>
           },
           onSubmitted: (_) => _activate(),
           decoration: InputDecoration(
-            hintText: "MATH-XXXX-XXXX-XXXX",
+            hintText: "MATH-ABCD-1234-EFGH",
             hintStyle: GoogleFonts.ibmPlexMono(
               color: _textSub,
               fontSize: 14,
@@ -273,6 +275,7 @@ class _LicenseScreenState extends State<LicenseScreen>
     ),
   );
 
+  // ─── FIXED BUY LINK with clipboard fallback ──────────────────────────────
   Widget _buildBuyLink() => Row(
     mainAxisAlignment: MainAxisAlignment.center,
     children: [
@@ -281,8 +284,36 @@ class _LicenseScreenState extends State<LicenseScreen>
         style: GoogleFonts.ibmPlexSans(color: _textSub, fontSize: 13),
       ),
       GestureDetector(
-        onTap: () {
-          // TODO: launch("https://selar.co/mathgod")
+        onTap: () async {
+          const url = 'https://selar.com/mathgod';
+          final uri = Uri.parse(url);
+          try {
+            if (await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+              // Success, link opened
+              return;
+            }
+            // Fallback: launch failed → copy to clipboard
+            await Clipboard.setData(ClipboardData(text: url));
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Link copied to clipboard! Open your browser and paste.',
+                ),
+                duration: Duration(seconds: 3),
+              ),
+            );
+          } catch (e) {
+            // Any exception → copy to clipboard
+            await Clipboard.setData(ClipboardData(text: url));
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Could not open link. Link copied to clipboard.'),
+                duration: Duration(seconds: 3),
+              ),
+            );
+          }
         },
         child: Text(
           "Buy on Selar →",

@@ -2,8 +2,9 @@
 #include <cstring>
 #include <string>
 #include <stdexcept>
-#include "giac/config.h"
-#include "giac/giac.h"
+
+#include "config.h"
+#include "giac.h"
 
 static giac::context* g_ctx = nullptr;
 
@@ -14,7 +15,7 @@ int giac_init() {
     if (g_ctx) return 0;
     try {
         g_ctx = new giac::context();
-        g_ctx->output_format = giac::_OUTPUT_FORMAT_NORMAL;
+        // output_format doesn't exist in this version – removed
         return 0;
     } catch (...) {
         return -1;
