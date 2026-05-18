@@ -23,7 +23,7 @@ This application represents a novel integration architecture combining modern mo
 
 ## ⚖️ Open Source & Licensing
 
-In strict compliance with the **GNU General Public License v3.0 (GPLv3)**, the complete integration layer, build scripts, and interface mechanics for this application are fully open-sourced here for the global developer community. 
+In strict compliance with the **GNU General Public License v2.0 (GPLv2)**, the complete integration layer, build scripts, and interface mechanics for this application are fully open-sourced here for the global developer community. 
 
 ### Credits & Attribution
 * **Giac/Xcas Core:** Developed by Bernard Parisse / Université Grenoble Alpes.
