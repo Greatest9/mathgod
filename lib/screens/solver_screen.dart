@@ -10,6 +10,10 @@ import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import '../engine/solver_engine.dart';
 import '../models/solution.dart';
+import '../services/history_service.dart';
+import '../widgets/function_grapher.dart';
+import '../widgets/history_bottom_sheet.dart';
+import '../widgets/math_keypad.dart';
 
 class SolverScreen extends StatefulWidget {
   final String? initialInput;
@@ -26,6 +30,7 @@ class _SolverScreenState extends State<SolverScreen> {
   Solution? _solution;
   bool _loading = false;
   bool _approximate = false;
+  bool _showKeypad = true;
 
   @override
   void initState() {
@@ -57,6 +62,8 @@ class _SolverScreenState extends State<SolverScreen> {
       _solution = solution;
       _loading = false;
     });
+    // Auto-save to calculation history
+    HistoryService.instance.addEntry(solution);
   }
 
   Future<void> _shareResult() async {
@@ -110,6 +117,12 @@ class _SolverScreenState extends State<SolverScreen> {
                   ? _buildEmpty()
                   : _buildResult(),
             ),
+            if (_showKeypad)
+              MathKeypad(
+                controller: _ctrl,
+                onSolve: _solve,
+                onClose: () => setState(() => _showKeypad = false),
+              ),
           ],
         ),
       ),
@@ -165,6 +178,66 @@ class _SolverScreenState extends State<SolverScreen> {
                 ),
               ),
               const SizedBox(width: 6),
+              // Math Keypad toggle button
+              IconButton(
+                icon: Icon(
+                  _showKeypad ? Icons.keyboard_alt : Icons.keyboard_alt_outlined,
+                  color: _showKeypad ? const Color(0xFF00E5AA) : const Color(0xFF7777AA),
+                  size: 20,
+                ),
+                onPressed: () => setState(() => _showKeypad = !_showKeypad),
+                tooltip: 'Toggle Math Keypad',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(
+                  minWidth: 36,
+                  minHeight: 36,
+                ),
+              ),
+              const SizedBox(width: 4),
+              // History button
+              IconButton(
+                icon: const Icon(
+                  Icons.history_rounded,
+                  color: Color(0xFF7C6FFF),
+                  size: 20,
+                ),
+                onPressed: () {
+                  HistoryBottomSheet.show(
+                    context,
+                    onSelectInput: (selected) {
+                      _ctrl.text = selected;
+                      _solve();
+                    },
+                  );
+                },
+                tooltip: 'Calculation History',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(
+                  minWidth: 36,
+                  minHeight: 36,
+                ),
+              ),
+              const SizedBox(width: 4),
+              // 2D Graph / Plot button
+              IconButton(
+                icon: const Icon(
+                  Icons.show_chart_rounded,
+                  color: Color(0xFF00E5AA),
+                  size: 20,
+                ),
+                onPressed: () {
+                  final initial = _solution != null && _solution!.input.contains('x')
+                      ? _solution!.input
+                      : (_ctrl.text.isNotEmpty ? _ctrl.text : 'sin(x)');
+                  FunctionGrapher.show(context, initialExpression: initial);
+                },
+                tooltip: '2D Function Grapher',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(
+                  minWidth: 36,
+                  minHeight: 36,
+                ),
+              ),
               if (_solution != null) ...[
                 // Share button
                 IconButton(
@@ -201,6 +274,11 @@ class _SolverScreenState extends State<SolverScreen> {
                 child: TextField(
                   controller: _ctrl,
                   focusNode: _focus,
+                  onTap: () {
+                    if (!_showKeypad) {
+                      setState(() => _showKeypad = true);
+                    }
+                  },
                   style: const TextStyle(
                     fontFamily: 'IBMPlexMono',
                     color: Color(0xFFF0F0FF),
@@ -439,6 +517,42 @@ class _ShareableResultCard extends StatelessWidget {
                   fontFamily: 'IBMPlexMono',
                   color: Color(0xFF7777AA),
                   fontSize: 13,
+                ),
+              ),
+            ),
+          ],
+          if (s.input.contains('x') || s.resultReadable.contains('x')) ...[
+            const SizedBox(height: 12),
+            Center(
+              child: GestureDetector(
+                onTap: () {
+                  final toPlot = s.resultReadable.isNotEmpty && !s.resultReadable.contains('Error')
+                      ? s.resultReadable
+                      : s.input;
+                  FunctionGrapher.show(context, initialExpression: toPlot);
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF00E5AA).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFF00E5AA).withOpacity(0.3)),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.show_chart_rounded, color: Color(0xFF00E5AA), size: 15),
+                      SizedBox(width: 6),
+                      Text(
+                        "Plot Function",
+                        style: TextStyle(
+                          color: Color(0xFF00E5AA),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
