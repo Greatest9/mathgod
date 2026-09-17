@@ -34,6 +34,13 @@ Comment claimed "Run solver off the main thread", but `Future.microtask` stays o
 - History dedupe is adjacent-only (history_service.dart:44) — intentional, keep.
 - 2×2 inverse emits Formula + Gauss-Jordan cards even when the computed inverse step is shown — mildly redundant pedagogy; keep as-is unless omitting looks better.
 
+### A6 · Triangle: home-screen "Geometry" card closes the app `[ ]`
+- Repro: home → tap **Geometry** (`home_screen.dart:378` pre-fills `sin(pi/4)`) → the app closes. A process death, so the Dart side is not the culprit.
+- Ruled out locally: `sin(pi/4)` in the pattern path is fine (`Trigonometry`, `frac{sqrt{2}}{2}`, no throw) and there is no isolate boundary problem here.
+- Working hypothesis: a native crash inside Giac on the exact-trig branch — `giacCmd = 'simplify($input)'` (solver_engine.dart, trig branch) and/or the follow-up `latex(...)` call. The trig branch already exists because `normal()` crashes the native lib on e.g. `sin(pi/8)`, so this build's trig simplification is suspect.
+- Plan of attack (needs the device): capture the crash trace, then bisect which single Giac command kills it — `simplify(sin(pi/4))` vs `latex(sqrt(2)/2)` vs `evalf(sin(pi/4))` — and route the exact value through the pattern engine, using Giac only for a numeric check.
+- Blocked: `adb devices` is empty (phone disconnected), so no logcat yet.
+
 ---
 
 ## Phase B — Step-by-Step Overhaul (all topics)
