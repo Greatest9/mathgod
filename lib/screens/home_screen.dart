@@ -333,10 +333,10 @@ class _HomeScreenState extends State<HomeScreen>
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: const Color(0xFF00E5AA).withOpacity(0.07),
+          color: const Color(0xFF00E5AA).withValues(alpha: 0.07),
           borderRadius: BorderRadius.circular(12),
           border:
-              Border.all(color: const Color(0xFF00E5AA).withOpacity(0.2)),
+              Border.all(color: const Color(0xFF00E5AA).withValues(alpha: 0.2)),
         ),
         child: Row(
           children: [
@@ -398,7 +398,7 @@ class _DomainCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: const Color(0xFF161624),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: d.col.withOpacity(0.2)),
+          border: Border.all(color: d.col.withValues(alpha: 0.2)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

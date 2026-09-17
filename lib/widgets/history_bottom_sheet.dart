@@ -292,7 +292,7 @@ class _HistoryBottomSheetState extends State<HistoryBottomSheet> {
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 20),
         decoration: BoxDecoration(
-          color: const Color(0xFFFF6B8A).withOpacity(0.2),
+          color: const Color(0xFFFF6B8A).withValues(alpha: 0.2),
           borderRadius: BorderRadius.circular(12),
         ),
         child: const Icon(Icons.delete_outline, color: Color(0xFFFF6B8A)),
@@ -315,7 +315,7 @@ class _HistoryBottomSheetState extends State<HistoryBottomSheet> {
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: item.isFavorite
-                  ? const Color(0xFFFFB347).withOpacity(0.3)
+                  ? const Color(0xFFFFB347).withValues(alpha: 0.3)
                   : const Color(0xFF232336),
             ),
           ),
@@ -327,7 +327,7 @@ class _HistoryBottomSheetState extends State<HistoryBottomSheet> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF7C6FFF).withOpacity(0.12),
+                      color: const Color(0xFF7C6FFF).withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(

@@ -1,6 +1,6 @@
 // lib/screens/solver_screen.dart
 import 'dart:io';
-import 'dart:typed_data';
+import 'dart:isolate';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -53,17 +53,28 @@ class _SolverScreenState extends State<SolverScreen> {
     if (input.isEmpty) return;
     _focus.unfocus();
     setState(() => _loading = true);
-    // Run solver off the main thread so complex Giac calls don't jank the UI
-    final solution = await Future.microtask(
-      () => SolverEngine.instance.solve(input, approximate: _approximate),
-    );
-    if (!mounted) return;
-    setState(() {
-      _solution = solution;
-      _loading = false;
-    });
-    // Auto-save to calculation history
-    HistoryService.instance.addEntry(solution);
+    // Run the solver on a worker isolate so heavy Giac calls never block the UI
+    // thread. Each isolate loads its own Dart-side GiacFFI wrapper; the native
+    // wrapper serialises the shared CAS context with a mutex, so this is safe.
+    final approximate = _approximate;
+    try {
+      final solution = await Isolate.run(
+        () => SolverEngine.instance.solve(input, approximate: approximate),
+      );
+      if (!mounted) return;
+      setState(() {
+        _solution = solution;
+        _loading = false;
+      });
+      // Auto-save to calculation history
+      HistoryService.instance.addEntry(solution);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Solver error: $e')));
+    }
   }
 
   Future<void> _shareResult() async {
@@ -156,13 +167,13 @@ class _SolverScreenState extends State<SolverScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
                     color: _approximate
-                        ? const Color(0xFF00E5AA).withOpacity(0.15)
-                        : const Color(0xFF7C6FFF).withOpacity(0.15),
+                        ? const Color(0xFF00E5AA).withValues(alpha: 0.15)
+                        : const Color(0xFF7C6FFF).withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
                       color: _approximate
-                          ? const Color(0xFF00E5AA).withOpacity(0.4)
-                          : const Color(0xFF7C6FFF).withOpacity(0.4),
+                          ? const Color(0xFF00E5AA).withValues(alpha: 0.4)
+                          : const Color(0xFF7C6FFF).withValues(alpha: 0.4),
                     ),
                   ),
                   child: Text(
@@ -436,14 +447,14 @@ class _ShareableResultCard extends StatelessWidget {
         color: const Color(0xFF10101C), // solid bg so PNG looks clean
         gradient: LinearGradient(
           colors: [
-            const Color(0xFF7C6FFF).withOpacity(0.1),
-            const Color(0xFF00E5AA).withOpacity(0.05),
+            const Color(0xFF7C6FFF).withValues(alpha: 0.1),
+            const Color(0xFF00E5AA).withValues(alpha: 0.05),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF7C6FFF).withOpacity(0.3)),
+        border: Border.all(color: const Color(0xFF7C6FFF).withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -534,9 +545,9 @@ class _ShareableResultCard extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF00E5AA).withOpacity(0.1),
+                    color: const Color(0xFF00E5AA).withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFF00E5AA).withOpacity(0.3)),
+                    border: Border.all(color: const Color(0xFF00E5AA).withValues(alpha: 0.3)),
                   ),
                   child: const Row(
                     mainAxisSize: MainAxisSize.min,
@@ -563,7 +574,7 @@ class _ShareableResultCard extends StatelessWidget {
             child: Text(
               'Math God  ·  math.god',
               style: TextStyle(
-                color: const Color(0xFF7C6FFF).withOpacity(0.5),
+                color: const Color(0xFF7C6FFF).withValues(alpha: 0.5),
                 fontSize: 10,
                 letterSpacing: 1.0,
                 fontFamily: 'IBMPlexMono',
@@ -585,9 +596,9 @@ class _TipCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF00E5AA).withOpacity(0.05),
+        color: const Color(0xFF00E5AA).withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF00E5AA).withOpacity(0.2)),
+        border: Border.all(color: const Color(0xFF00E5AA).withValues(alpha: 0.2)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -723,7 +734,7 @@ class _StepCardState extends State<_StepCard> {
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF00E5AA).withOpacity(0.1),
+                              color: const Color(0xFF00E5AA).withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(

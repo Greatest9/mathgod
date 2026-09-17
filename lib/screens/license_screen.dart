@@ -125,7 +125,7 @@ class _LicenseScreenState extends State<LicenseScreen>
             BoxShadow(
               color: const Color(
                 0xFF7C6FFF,
-              ).withOpacity(0.3 + 0.15 * _pulseCtrl.value),
+              ).withValues(alpha: 0.3 + 0.15 * _pulseCtrl.value),
               blurRadius: 20,
               spreadRadius: 4,
             ),
@@ -186,7 +186,7 @@ class _LicenseScreenState extends State<LicenseScreen>
           color: _card,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: _error.isNotEmpty ? _red.withOpacity(0.5) : _border,
+            color: _error.isNotEmpty ? _red.withValues(alpha: 0.5) : _border,
           ),
         ),
         child: TextField(
@@ -223,9 +223,9 @@ class _LicenseScreenState extends State<LicenseScreen>
   Widget _buildError() => Container(
     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
     decoration: BoxDecoration(
-      color: _red.withOpacity(0.08),
+      color: _red.withValues(alpha: 0.08),
       borderRadius: BorderRadius.circular(10),
-      border: Border.all(color: _red.withOpacity(0.25)),
+      border: Border.all(color: _red.withValues(alpha: 0.25)),
     ),
     child: Row(
       children: [

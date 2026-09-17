@@ -67,7 +67,7 @@ class _RootScreenState extends State<RootScreen> {
         color: const Color(0xFF10101C),
         border: const Border(top: BorderSide(color: Color(0xFF232336))),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 20),
+          BoxShadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 20),
         ],
       ),
       child: SafeArea(
@@ -88,7 +88,7 @@ class _RootScreenState extends State<RootScreen> {
                   ),
                   decoration: BoxDecoration(
                     color: sel
-                        ? const Color(0xFF7C6FFF).withOpacity(0.12)
+                        ? const Color(0xFF7C6FFF).withValues(alpha: 0.12)
                         : Colors.transparent,
                     borderRadius: BorderRadius.circular(12),
                   ),

@@ -103,7 +103,6 @@ class LicenseManager {
     // Expects: MATH-XXXX-XXXX-XXXX (3 groups after MATH-)
     return RegExp(
       r'^MATH-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$',
-      caseSensitive: false,
     ).hasMatch(key);
   }
 

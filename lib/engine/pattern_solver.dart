@@ -383,9 +383,14 @@ extension PatternFallback on SolverEngine {
     );
     final rows = <String>[];
     double x = x0;
+    bool evaluable = true;
     for (int i = 0; i < 7; i++) {
       final fx = _ep(fn, x);
       final fpx = _epd(fn, x);
+      if (!fx.isFinite || !fpx.isFinite) {
+        evaluable = false;
+        break;
+      }
       if (fpx.abs() < 1e-14) break;
       final xn = x - fx / fpx;
       rows.add('x_{${i + 1}}=${_fn(xn)}');
@@ -394,6 +399,29 @@ extension PatternFallback on SolverEngine {
         break;
       }
       x = xn;
+    }
+    if (!evaluable) {
+      steps.add(
+        const SolutionStep(
+          title: 'Cannot Evaluate f(x)',
+          latex: r'\text{f(x) not evaluable}',
+          explanation:
+              'The pattern engine could not evaluate this expression '
+              'numerically, so no honest Newton iteration can be shown. '
+              'Provide an explicit polynomial, e.g. newton(x^3-2x-5, x0=2).',
+          rule: 'Evaluation Failed',
+        ),
+      );
+      return Solution(
+        input: input,
+        domain: MathDomain.general,
+        operation: 'Newton-Raphson',
+        resultLatex: r'\text{cannot evaluate } f(x)',
+        resultReadable: 'Cannot evaluate f(x) — unsupported expression',
+        steps: steps,
+        isUnsolvable: true,
+        tip: "Newton's method needs a numerically evaluable f(x).",
+      );
     }
     if (rows.isNotEmpty)
       steps.add(
@@ -448,7 +476,8 @@ extension PatternFallback on SolverEngine {
     if (s.contains('x^3')) return x * x * x;
     if (s.contains('x^2') && s.contains('-2')) return x * x - 2;
     if (s.contains('x^2')) return x * x;
-    return x * x * x - 2;
+    // Unrecognised expression: fail loudly instead of fabricating a value.
+    return double.nan;
   }
 
   double _epd(String e, double x) {
@@ -467,7 +496,8 @@ extension PatternFallback on SolverEngine {
     final s = e.toLowerCase().replaceAll(' ', '');
     if (s.contains('x^3')) return 3 * x * x;
     if (s.contains('x^2')) return 2 * x;
-    return 1.0;
+    // Unrecognised expression: fail loudly instead of fabricating a value.
+    return double.nan;
   }
 
   // ═══ 5. EULER METHOD ═════════════════════════════════════════════════════════
