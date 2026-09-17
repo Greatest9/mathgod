@@ -18,6 +18,7 @@ Comment claimed "Run solver off the main thread", but `Future.microtask` stays o
 - Same bug class existed in the graphers (`graph_2d.dart` / `graph_3d.dart` sampled via `Isolate.run` closures built in `State` methods, wrapped in a silent sync fallback) — both now use `compute` with request classes. `test/solver_isolate_test.dart` guards it: an unsendable `InheritedWidget` above `SolverScreen` plus `tester.runAsync` (isolate replies are not delivered inside the fake-async zone) asserts no SnackBar and a rendered result.
 - **Required native change:** Giac's C wrapper shares one `giac::context*` and had no locking, so parallel isolates would have raced the CAS. Added a `std::mutex` around `giac_init()`/`solve_math()` in `android/app/src/main/cpp/giac_wrapper.cpp`. Android-only build — iOS never linked the wrapper (no `giac` refs in `project.pbxproj`), so it uses the Dart pattern path.
 - Needs a native rebuild (`flutter clean` / full build) to take effect.
+- Verified on device 2026-09-17 (SM-N9760, build `build-20260917-091914`): `d/dx[x^3]` → `3*x^2` with a Power Rule step, and `int(e^x,0,1)` → `exp(1)-1` with a verification step. logcat free of isolate-send errors.
 
 ### A3 · Newton fallback silently lied — pattern_solver.dart:451 `[x]`
 `_ep()` fallback ended with `return x * x * x - 2`, so an unmatched expression (e.g. `newton(sin(x))` without Giac) reported the root of x³−2 ≈ 1.2599, not the true root.
@@ -89,7 +90,7 @@ User decision: rebuild the plotter into a real graphing system, including a 3D s
 
 Resolves A1 (`e^x`, and any `e`-based expression). Also removes the UI jank from plotting by moving sampling off the main isolate (same philosophy as A2).
 
-Status: implemented and `flutter analyze`-clean. On-device visual check pending (rotate/zoom feel, 3D shading, `e^x` preset). Note: isolate sampling relies on the A2 native mutex to keep Giac calls safe.
+Status: implemented and `flutter analyze`-clean. On-device check done 2026-09-17 (SM-N9760): `e^x` preset plots, `2D ⇄ 3D` toggle works, 3D mesh + drag-rotate fine. Remaining eyeball items (shading quality, pinch-zoom feel, `1/x` gap detection) are cosmetic only. Note: isolate sampling relies on the A2 native mutex to keep Giac calls safe.
 
 ---
 
