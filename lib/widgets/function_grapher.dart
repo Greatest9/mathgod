@@ -1,8 +1,10 @@
 // lib/widgets/function_grapher.dart
 import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
-import 'package:fl_chart/fl_chart.dart';
-import 'package:math_expressions/math_expressions.dart';
+
+import 'graph_2d.dart';
+import 'graph_3d.dart';
 
 class FunctionGrapher extends StatefulWidget {
   final String initialExpression;
@@ -14,7 +16,8 @@ class FunctionGrapher extends StatefulWidget {
     this.isDialog = false,
   });
 
-  static Future<void> show(BuildContext context, {String initialExpression = 'sin(x)'}) {
+  static Future<void> show(BuildContext context,
+      {String initialExpression = 'sin(x)'}) {
     return showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -32,14 +35,11 @@ class FunctionGrapher extends StatefulWidget {
 
 class _FunctionGrapherState extends State<FunctionGrapher> {
   late final TextEditingController _ctrl;
+  bool _is3d = false;
   double _minX = -10.0;
   double _maxX = 10.0;
-  double _minY = -10.0;
-  double _maxY = 10.0;
-  List<FlSpot> _spots = [];
-  String? _error;
 
-  final List<String> _presets = [
+  final List<String> _presets2d = [
     'sin(x)',
     'cos(x)',
     'x^2',
@@ -50,11 +50,19 @@ class _FunctionGrapherState extends State<FunctionGrapher> {
     'sqrt(x)',
   ];
 
+  final List<String> _presets3d = [
+    'sin(x)*cos(y)',
+    'x*x - y*y',
+    'sqrt(x*x + y*y)',
+    'sin(x*x + y*y)',
+    'x*y',
+    'e^(-(x*x + y*y)/4)',
+  ];
+
   @override
   void initState() {
     super.initState();
-    _ctrl = TextEditingController(text: _cleanExpression(widget.initialExpression));
-    _plot();
+    _ctrl = TextEditingController(text: widget.initialExpression);
   }
 
   @override
@@ -63,74 +71,12 @@ class _FunctionGrapherState extends State<FunctionGrapher> {
     super.dispose();
   }
 
-  String _cleanExpression(String raw) {
-    var s = raw.trim();
+  String get _expr {
+    var s = _ctrl.text.trim();
     if (s.startsWith('y=') || s.startsWith('y =') || s.startsWith('f(x)=')) {
       s = s.substring(s.indexOf('=') + 1).trim();
     }
-    return s.isEmpty ? 'sin(x)' : s;
-  }
-
-  void _plot() {
-    final exprStr = _ctrl.text.trim();
-    if (exprStr.isEmpty) return;
-
-    try {
-      // Normalize common math shorthands for math_expressions
-      final normalized = exprStr
-          .replaceAll('pi', '${math.pi}')
-          .replaceAll('e^', 'exp')
-          .replaceAllMapped(RegExp(r'(\d)([a-zA-Z])'), (m) => '${m[1]}*${m[2]}');
-
-      final parser = Parser();
-      final expression = parser.parse(normalized);
-      final cm = ContextModel();
-
-      final points = <FlSpot>[];
-      const int steps = 200;
-      final stepSize = (_maxX - _minX) / steps;
-
-      double calculatedMinY = double.infinity;
-      double calculatedMaxY = -double.infinity;
-
-      for (int i = 0; i <= steps; i++) {
-        final x = _minX + i * stepSize;
-        cm.bindVariable(Variable('x'), Number(x));
-        try {
-          final eval = expression.evaluate(EvaluationType.REAL, cm);
-          if (eval is num && !eval.isNaN && !eval.isInfinite) {
-            final y = eval.toDouble();
-            // Clamp extreme asymptotic values (e.g. 1/x at 0)
-            if (y >= -100 && y <= 100) {
-              points.add(FlSpot(x, y));
-              if (y < calculatedMinY) calculatedMinY = y;
-              if (y > calculatedMaxY) calculatedMaxY = y;
-            }
-          }
-        } catch (_) {
-          // Skip undefined evaluation points (e.g. sqrt(-1), ln(0))
-        }
-      }
-
-      setState(() {
-        _spots = points;
-        _error = null;
-        if (calculatedMinY != double.infinity && calculatedMaxY != -double.infinity) {
-          final margin = (calculatedMaxY - calculatedMinY).abs() * 0.15;
-          _minY = (calculatedMinY - margin).clamp(-50.0, 50.0);
-          _maxY = (calculatedMaxY + margin).clamp(-50.0, 50.0);
-          if ((_maxY - _minY).abs() < 1) {
-            _minY -= 2;
-            _maxY += 2;
-          }
-        }
-      });
-    } catch (e) {
-      setState(() {
-        _error = 'Could not plot function';
-        _spots = [];
-      });
-    }
+    return s;
   }
 
   void _setDomain(double min, double max) {
@@ -138,11 +84,11 @@ class _FunctionGrapherState extends State<FunctionGrapher> {
       _minX = min;
       _maxX = max;
     });
-    _plot();
   }
 
   @override
   Widget build(BuildContext context) {
+    final expr = _expr;
     final content = Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       decoration: const BoxDecoration(
@@ -155,22 +101,36 @@ class _FunctionGrapherState extends State<FunctionGrapher> {
         children: [
           _buildHeader(),
           const SizedBox(height: 10),
+          _buildModeToggle(),
+          const SizedBox(height: 10),
           _buildInputField(),
           const SizedBox(height: 8),
           _buildPresets(),
-          const SizedBox(height: 14),
-          _buildDomainControls(),
+          if (!_is3d) ...[
+            const SizedBox(height: 14),
+            _buildDomainControls(),
+          ],
           const SizedBox(height: 14),
           SizedBox(
-            height: 240,
-            child: _error != null
-                ? Center(
+            height: _is3d ? 300 : 240,
+            child: expr.isEmpty
+                ? const Center(
                     child: Text(
-                      _error!,
-                      style: const TextStyle(color: Color(0xFFFF6B8A), fontSize: 13),
+                      'Enter a function to plot',
+                      style: TextStyle(color: Color(0xFF7777AA), fontSize: 13),
                     ),
                   )
-                : _buildChart(),
+                : _is3d
+                    ? Graph3DView(
+                        key: ValueKey('3d|$expr'),
+                        expression: expr,
+                      )
+                    : Graph2DView(
+                        key: ValueKey('2d|$expr|$_minX|$_maxX'),
+                        expression: expr,
+                        minX: _minX,
+                        maxX: _maxX,
+                      ),
           ),
         ],
       ),
@@ -195,7 +155,7 @@ class _FunctionGrapherState extends State<FunctionGrapher> {
         const Icon(Icons.show_chart_rounded, color: Color(0xFF00E5AA), size: 22),
         const SizedBox(width: 8),
         const Text(
-          "2D Function Plotter",
+          'Function Plotter',
           style: TextStyle(
             color: Color(0xFFF0F0FF),
             fontSize: 17,
@@ -214,6 +174,59 @@ class _FunctionGrapherState extends State<FunctionGrapher> {
     );
   }
 
+  Widget _buildModeToggle() {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(3),
+          decoration: BoxDecoration(
+            color: const Color(0xFF161624),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFF232336)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _modeChip('2D', !_is3d, () => setState(() => _is3d = false)),
+              const SizedBox(width: 3),
+              _modeChip('3D', _is3d, () => setState(() => _is3d = true)),
+            ],
+          ),
+        ),
+        const SizedBox(width: 10),
+        Text(
+          _is3d ? 'z = f(x, y)' : 'y = f(x)',
+          style: const TextStyle(
+            color: Color(0xFF7777AA),
+            fontSize: 11,
+            fontFamily: 'IBMPlexMono',
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _modeChip(String label, bool active, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+        decoration: BoxDecoration(
+          color: active ? const Color(0xFF7C6FFF) : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: active ? const Color(0xFFF0F0FF) : const Color(0xFF7777AA),
+            fontSize: 12,
+            fontWeight: active ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildInputField() {
     return Container(
       decoration: BoxDecoration(
@@ -223,11 +236,11 @@ class _FunctionGrapherState extends State<FunctionGrapher> {
       ),
       child: Row(
         children: [
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Text(
-              "y = ",
-              style: TextStyle(
+              'y = ',
+              style: const TextStyle(
                 color: Color(0xFF7C6FFF),
                 fontFamily: 'IBMPlexMono',
                 fontWeight: FontWeight.bold,
@@ -243,20 +256,21 @@ class _FunctionGrapherState extends State<FunctionGrapher> {
                 color: Color(0xFFF0F0FF),
                 fontSize: 14,
               ),
-              decoration: const InputDecoration(
-                hintText: "sin(x), x^2 - 4, e^x",
-                hintStyle: TextStyle(color: Color(0xFF555577), fontSize: 13),
+              decoration: InputDecoration(
+                hintText: _is3d ? 'sin(x)*cos(y), x^2 - y^2' : 'sin(x), x^2 - 4, e^x',
+                hintStyle: const TextStyle(color: Color(0xFF555577), fontSize: 13),
                 border: InputBorder.none,
                 isDense: true,
-                contentPadding: EdgeInsets.symmetric(vertical: 12),
+                contentPadding: const EdgeInsets.symmetric(vertical: 12),
               ),
-              onSubmitted: (_) => _plot(),
+              onChanged: (_) => setState(() {}),
+              onSubmitted: (_) => setState(() {}),
             ),
           ),
           IconButton(
             icon: const Icon(Icons.play_arrow_rounded, color: Color(0xFF00E5AA)),
-            onPressed: _plot,
-            tooltip: 'Plot curve',
+            onPressed: () => setState(() {}),
+            tooltip: 'Plot',
           ),
         ],
       ),
@@ -264,16 +278,17 @@ class _FunctionGrapherState extends State<FunctionGrapher> {
   }
 
   Widget _buildPresets() {
+    final presets = _is3d ? _presets3d : _presets2d;
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
-        children: _presets.map((p) {
+        children: presets.map((p) {
           return Padding(
             padding: const EdgeInsets.only(right: 6),
             child: GestureDetector(
               onTap: () {
                 _ctrl.text = p;
-                _plot();
+                setState(() {});
               },
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -302,16 +317,17 @@ class _FunctionGrapherState extends State<FunctionGrapher> {
     return Row(
       children: [
         const Text(
-          "Domain: ",
+          'Domain: ',
           style: TextStyle(color: Color(0xFF7777AA), fontSize: 11),
         ),
-        _domainChip("[-5, 5]", _minX == -5, () => _setDomain(-5, 5)),
+        _domainChip('[-5, 5]', _minX == -5, () => _setDomain(-5, 5)),
         const SizedBox(width: 6),
-        _domainChip("[-10, 10]", _minX == -10, () => _setDomain(-10, 10)),
+        _domainChip('[-10, 10]', _minX == -10, () => _setDomain(-10, 10)),
         const SizedBox(width: 6),
-        _domainChip("[-2π, 2π]", _minX == -2 * math.pi, () => _setDomain(-2 * math.pi, 2 * math.pi)),
+        _domainChip('[-2pi, 2pi]', _minX == -2 * math.pi,
+            () => _setDomain(-2 * math.pi, 2 * math.pi)),
         const SizedBox(width: 6),
-        _domainChip("[0, 20]", _minX == 0, () => _setDomain(0, 20)),
+        _domainChip('[0, 20]', _minX == 0, () => _setDomain(0, 20)),
       ],
     );
   }
@@ -322,7 +338,7 @@ class _FunctionGrapherState extends State<FunctionGrapher> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
-          color: active ? const Color(0xFF7C6FFF).withOpacity(0.2) : const Color(0xFF161624),
+          color: active ? const Color(0xFF7C6FFF).withValues(alpha: 0.2) : const Color(0xFF161624),
           borderRadius: BorderRadius.circular(6),
           border: Border.all(
             color: active ? const Color(0xFF7C6FFF) : const Color(0xFF232336),
@@ -337,105 +353,6 @@ class _FunctionGrapherState extends State<FunctionGrapher> {
             fontWeight: active ? FontWeight.bold : FontWeight.normal,
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildChart() {
-    if (_spots.isEmpty) {
-      return const Center(
-        child: Text("No points to display", style: TextStyle(color: Color(0xFF7777AA))),
-      );
-    }
-
-    return LineChart(
-      LineChartData(
-        gridData: FlGridData(
-          show: true,
-          drawVerticalLine: true,
-          getDrawingHorizontalLine: (value) {
-            return FlLine(
-              color: value == 0 ? const Color(0xFF7C6FFF).withOpacity(0.5) : const Color(0xFF1C1C2E),
-              strokeWidth: value == 0 ? 1.5 : 0.8,
-            );
-          },
-          getDrawingVerticalLine: (value) {
-            return FlLine(
-              color: value == 0 ? const Color(0xFF7C6FFF).withOpacity(0.5) : const Color(0xFF1C1C2E),
-              strokeWidth: value == 0 ? 1.5 : 0.8,
-            );
-          },
-        ),
-        titlesData: FlTitlesData(
-          show: true,
-          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 22,
-              interval: (_maxX - _minX) / 4,
-              getTitlesWidget: (value, meta) {
-                return Text(
-                  value.toStringAsFixed(1).replaceAll('.0', ''),
-                  style: const TextStyle(color: Color(0xFF666688), fontSize: 9, fontFamily: 'IBMPlexMono'),
-                );
-              },
-            ),
-          ),
-          leftTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 28,
-              interval: (_maxY - _minY) / 4,
-              getTitlesWidget: (value, meta) {
-                return Text(
-                  value.toStringAsFixed(1).replaceAll('.0', ''),
-                  style: const TextStyle(color: Color(0xFF666688), fontSize: 9, fontFamily: 'IBMPlexMono'),
-                );
-              },
-            ),
-          ),
-        ),
-        borderData: FlBorderData(
-          show: true,
-          border: Border.all(color: const Color(0xFF232336)),
-        ),
-        minX: _minX,
-        maxX: _maxX,
-        minY: _minY,
-        maxY: _maxY,
-        lineTouchData: LineTouchData(
-          touchTooltipData: LineTouchTooltipData(
-            getTooltipItems: (touchedSpots) {
-              return touchedSpots.map((spot) {
-                return LineTooltipItem(
-                  'x: ${spot.x.toStringAsFixed(2)}\ny: ${spot.y.toStringAsFixed(2)}',
-                  const TextStyle(
-                    color: Color(0xFF00E5AA),
-                    fontSize: 11,
-                    fontFamily: 'IBMPlexMono',
-                    fontWeight: FontWeight.bold,
-                  ),
-                );
-              }).toList();
-            },
-          ),
-        ),
-        lineBarsData: [
-          LineChartBarData(
-            spots: _spots,
-            isCurved: true,
-            color: const Color(0xFF00E5AA),
-            barWidth: 2.5,
-            isStrokeCapRound: true,
-            dotData: const FlDotData(show: false),
-            belowBarData: BarAreaData(
-              show: true,
-              color: const Color(0xFF00E5AA).withOpacity(0.08),
-            ),
-          ),
-        ],
       ),
     );
   }
