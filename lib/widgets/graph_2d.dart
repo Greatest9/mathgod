@@ -1,7 +1,7 @@
 // lib/widgets/graph_2d.dart
-import 'dart:isolate';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../engine/graph_evaluator.dart';
@@ -113,7 +113,10 @@ class _Graph2DViewState extends State<Graph2DView> {
 
   Future<List<List<double>>> _sample(String expr, double xMin, double xMax) async {
     try {
-      return await Isolate.run(() => _sample2DSegments(expr, xMin, xMax));
+      return await compute(
+        _sample2DEntry,
+        _Sample2DRequest(expr, xMin, xMax),
+      );
     } catch (_) {
       return _sample2DSegments(expr, xMin, xMax);
     }
@@ -372,6 +375,17 @@ class _Grid {
     return mag * 10;
   }
 }
+
+class _Sample2DRequest {
+  const _Sample2DRequest(this.expr, this.xMin, this.xMax);
+
+  final String expr;
+  final double xMin;
+  final double xMax;
+}
+
+List<List<double>> _sample2DEntry(_Sample2DRequest request) =>
+    _sample2DSegments(request.expr, request.xMin, request.xMax);
 
 List<List<double>> _sample2DSegments(String expr, double xMin, double xMax) {
   const int base = 220;

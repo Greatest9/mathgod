@@ -1,7 +1,7 @@
 // lib/widgets/graph_3d.dart
-import 'dart:isolate';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../engine/graph_evaluator.dart';
@@ -100,7 +100,10 @@ class _Graph3DViewState extends State<Graph3DView> {
   Future<List<double>> _sampleMesh(
       String expr, double min, double max, int cells) async {
     try {
-      return await Isolate.run(() => _sample3DMesh(expr, min, max, cells));
+      return await compute(
+        _sample3DEntry,
+        _Sample3DRequest(expr, min, max, cells),
+      );
     } catch (_) {
       return _sample3DMesh(expr, min, max, cells);
     }
@@ -437,6 +440,18 @@ class _Quad3D {
   final double depth;
   final Color color;
 }
+
+class _Sample3DRequest {
+  const _Sample3DRequest(this.expr, this.min, this.max, this.cells);
+
+  final String expr;
+  final double min;
+  final double max;
+  final int cells;
+}
+
+List<double> _sample3DEntry(_Sample3DRequest request) =>
+    _sample3DMesh(request.expr, request.min, request.max, request.cells);
 
 List<double> _sample3DMesh(String expr, double min, double max, int cells) {
   final ev = GraphEvaluator.instance;

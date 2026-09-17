@@ -1,6 +1,6 @@
 // lib/screens/solver_screen.dart
 import 'dart:io';
-import 'dart:isolate';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -14,6 +14,19 @@ import '../services/history_service.dart';
 import '../widgets/function_grapher.dart';
 import '../widgets/history_bottom_sheet.dart';
 import '../widgets/math_keypad.dart';
+
+class _SolveRequest {
+  const _SolveRequest(this.input, this.approximate);
+
+  final String input;
+  final bool approximate;
+}
+
+Solution _solveInBackground(_SolveRequest request) =>
+    SolverEngine.instance.solve(
+      request.input,
+      approximate: request.approximate,
+    );
 
 class SolverScreen extends StatefulWidget {
   final String? initialInput;
@@ -58,8 +71,9 @@ class _SolverScreenState extends State<SolverScreen> {
     // wrapper serialises the shared CAS context with a mutex, so this is safe.
     final approximate = _approximate;
     try {
-      final solution = await Isolate.run(
-        () => SolverEngine.instance.solve(input, approximate: approximate),
+      final solution = await compute(
+        _solveInBackground,
+        _SolveRequest(input, approximate),
       );
       if (!mounted) return;
       setState(() {
@@ -69,6 +83,7 @@ class _SolverScreenState extends State<SolverScreen> {
       // Auto-save to calculation history
       HistoryService.instance.addEntry(solution);
     } catch (e) {
+      debugPrint('Solver error: $e');
       if (!mounted) return;
       setState(() => _loading = false);
       ScaffoldMessenger.of(
