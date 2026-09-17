@@ -12,6 +12,7 @@
 import 'dart:math' as math;
 import '../models/solution.dart';
 import 'giac_ffi.dart';
+import 'step_toolkit.dart';
 import 'word_problem_parser.dart';
 
 part 'pattern_solver.dart';
@@ -53,13 +54,14 @@ class SolverEngine {
         return giacSolution;
       }
 
-      final combinedSteps = List<SolutionStep>.from(patternSolution.steps);
-      combinedSteps.add(SolutionStep(
-        title: 'CAS Final Verification',
-        latex: giacSolution.resultLatex,
-        explanation: 'Exact final result computed by the offline Giac CAS engine.',
-        rule: 'Giac CAS',
-      ));
+      // The pattern engine explained the method; the value shown is the CAS
+      // one, so the check runs against that value and the original input.
+      final combinedSteps = List<SolutionStep>.from(patternSolution.steps)
+        ..add(
+          StepKit.verification(
+            _verify(patternSolution.operation, input, giacSolution.resultReadable),
+          ),
+        );
 
       return Solution(
         input: input,
@@ -72,7 +74,29 @@ class SolverEngine {
       );
     }
 
-    return patternSolution;
+    // No CAS on this platform.  Keep the pattern steps, and still close the
+    // solution with an honest statement about verification rather than
+    // pretending the answer was checked.
+    return Solution(
+      input: patternSolution.input,
+      domain: patternSolution.domain,
+      operation: patternSolution.operation,
+      resultLatex: patternSolution.resultLatex,
+      resultReadable: patternSolution.resultReadable,
+      steps: [
+        ...patternSolution.steps,
+        StepKit.verification(
+          const SolutionVerifier().check(
+            operation: patternSolution.operation,
+            input: input,
+            result: patternSolution.resultReadable,
+            giacAvailable: false,
+          ),
+        ),
+      ],
+      isUnsolvable: patternSolution.isUnsolvable,
+      tip: patternSolution.tip,
+    );
   }
 
   // ═══ GIAC PATH ═══════════════════════════════════════════════════════════════
@@ -229,7 +253,12 @@ class SolverEngine {
           : _cleanGiacLatex(latexResult);
 
       // ── Build explanation steps ───────────────────────────────────────────
-      final steps = _buildGiacSteps(input, giacCmd, rawResult, operation);
+      // One "how" card for the topic, then an independent check of the
+      // value we are about to display.
+      final steps = <SolutionStep>[
+        StepKit.method(operation, giacCmd),
+        StepKit.verification(_verify(operation, input, rawResult)),
+      ];
 
       return Solution(
         input: input,
@@ -257,36 +286,14 @@ class SolverEngine {
   // Minimal LaTeX rendering when Giac's latex() call also fails
   String _toLatexFallback(String s) => '\\text{${s.replaceAll(r'\', r'\\')}}';
 
-  List<SolutionStep> _buildGiacSteps(
-    String input,
-    String cmd,
-    String result,
-    String operation,
-  ) {
-    return [
-      const SolutionStep(
-        title: 'CAS Engine',
-        latex: r'\text{Giac CAS (offline symbolic engine)}',
-        explanation:
-            'Evaluated on-device using the Giac library — '
-            'the same engine that powers HP Prime calculators and Xcas.',
-      ),
-      SolutionStep(
-        title: 'Command Sent',
-        latex: '\\texttt{${_texEscape(cmd)}}',
-        explanation: 'Translated your input into a Giac CAS command.',
-      ),
-      SolutionStep(
-        title: 'Result',
-        latex: _toLatexFallback(result),
-        explanation: 'Exact symbolic result from Giac.',
-        rule: operation,
-      ),
-    ];
-  }
-
-  String _texEscape(String s) =>
-      s.replaceAll(r'\', r'\\').replaceAll('_', r'\_').replaceAll('^', r'\^{}');
+  /// Independent check of a value produced by the CAS path.
+  Verification _verify(String operation, String input, String result) =>
+      const SolutionVerifier().check(
+        operation: operation,
+        input: input,
+        result: result,
+        giacAvailable: true,
+      );
 
   String _tipFor(String op) {
     const tips = {

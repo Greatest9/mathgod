@@ -60,7 +60,14 @@ Comment claimed "Run solver off the main thread", but `Future.microtask` stays o
 
 ### Milestones
 
-- **[ ] M1 · All topics, low churn** — shared step toolkit + remove boilerplate + universal verification step. Wire into all 26 pattern dispatchers AND the Giac-only paths (`solve(...)`, `normal(...)`).
+- **[x] M1 · All topics, low churn** — shared step toolkit + remove boilerplate + universal verification step. Wired at the single choke point `SolverEngine.solve()`, so all 26 pattern dispatchers and the Giac-only paths are covered.
+  - `lib/engine/step_toolkit.dart` — `StepKit.method(operation, command)` / `StepKit.note(...)` / `StepKit.verification(Verification)` + `SolutionVerifier.check({operation, input, result, giacAvailable})` → `Verification(status: verified|failed|unavailable, check, detail)`.
+  - Boilerplate deleted: `_buildGiacSteps` and the `CAS Final Verification` card are gone (also removed the now-unused `_texEscape`). The Giac-only path is now one topic-aware method card + one verification card.
+  - The verifier never reuses the computation that produced the answer: central-difference probe (derivative), differentiate-the-antiderivative-back / Simpson quadrature (integral), two-sided numeric probe (limit), substitute the roots back (solve), det(A·A⁻¹)=1 (inverse), independent Dart expansion for n≤3 (determinant), det(A−λI)=0 per λ (eigenvalues), expand-the-factors-back (factorize), sample-near-the-point (series), inverse-transform (Laplace), exact-then-numeric identity (trig/evaluate/stats/…).
+  - Honesty rules: any CAS error, unparsable input or non-numeric value → `unavailable` (never a false `failed`); a `failed` card says the steps are the method only and the displayed value is the CAS result. `giacAvailable: false` (desktop/web, no `.so`) short-circuits to `unavailable` with an explanatory card.
+  - Deferred: the B3 "pattern vs Giac → simplified" compare-note. Both sides are exact and the displayed value is Giac's, so the verification card already delivers the never-a-wrong-final guarantee; comparing pattern `resultReadable` text needs Xcas-parseable normalization that is not worth the false positives yet.
+  - Tests: `test/step_toolkit_test.dart` (every solve closes with a `Verification` step; boilerplate titles gone; honest `unavailable` on platforms without Giac) + existing `test/solver_isolate_test.dart`; `flutter analyze` clean (50 pre-existing infos, unchanged).
+  - **On-device validation pending** — the Xcas verification commands only exist on Android; the local Windows run exercises the pattern path (`unavailable`) only.
 - **[ ] M2 · Biggest visual upgrade** — AST derivative engine with rule emission; rational display for fractions.
 - **[ ] M3 · Depth** — real Gauss-Jordan trace for matrix inverse, exact determinant/eigenvalues, u-substitution integrals, L'Hôpital limits.
 - **[ ] M4 · Fill gap topics** — Laplace/inverse Laplace via table transforms; literal `F(x,y,z)` parsing for vector calculus / line integrals / multiple integrals / partial derivatives; equation-solving strategies (factor → isolate → check, quadratic formula).
