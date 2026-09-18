@@ -222,10 +222,11 @@ class SolverEngine {
         operation = 'Vector Calculus';
         domain = MathDomain.calculus;
       } else if (_isTrig(lower)) {
-        // Dedicated trig branch — avoids normal() crash on e.g. sin(pi/8)
-        giacCmd = 'simplify($input)';
-        operation = 'Trigonometry';
-        domain = MathDomain.trigonometry;
+        // Giac's simplify() infinite-recurses on exact trig (sin(pi/4),
+        // sin(pi/8), …) and SIGSEGV's the worker thread.  The pattern
+        // engine already handles these correctly, so bail here and let
+        // solve() fall through to the pattern path.
+        return null;
       } else {
         // Generic: try to evaluate / simplify
         giacCmd = 'normal($input)';
