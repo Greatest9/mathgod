@@ -38,6 +38,8 @@ Comment claimed "Run solver off the main thread", but `Future.microtask` stays o
 - Repro: home → tap **Geometry** (`home_screen.dart:378` pre-fills `sin(pi/4)`) → the app closes. A process death, so the Dart side is not the culprit.
 - Ruled out locally: `sin(pi/4)` in the pattern path is fine (`Trigonometry`, `frac{sqrt{2}}{2}`, no throw) and there is no isolate boundary problem here.
 - Working hypothesis: a native crash inside Giac on the exact-trig branch — `giacCmd = 'simplify($input)'` (solver_engine.dart, trig branch) and/or the follow-up `latex(...)` call. The trig branch already exists because `normal()` crashes the native lib on e.g. `sin(pi/8)`, so this build's trig simplification is suspect.
+- **Root cause (trace captured on-device):** `Fatal signal 11 (SIGSEGV), SEGV_ACCERR` in tid **DartWorker** inside `libgiac.so` — 19 identical return-address frames = Giac's `simplify()` infinite-recurses on exact trig input and overflows the worker stack. It is the isolate thread, not the UI thread, so nothing in Flutter/Dart can catch it.
+- **Fix (d2c6b4b, shipped):** the trig branch now `return null`s from `_solveViaGiac` and lets `solve()` fall through to the pattern path, which already computes exact trig values correctly (`sin(pi/4)` → √2/2). Giac's exact trignometry simplification is simply never invoked.
 - Plan of attack (needs the device): capture the crash trace, then bisect which single Giac command kills it — `simplify(sin(pi/4))` vs `latex(sqrt(2)/2)` vs `evalf(sin(pi/4))` — and route the exact value through the pattern engine, using Giac only for a numeric check.
 - Blocked: `adb devices` is empty (phone disconnected), so no logcat yet.
 
