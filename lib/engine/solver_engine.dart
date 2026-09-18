@@ -13,6 +13,7 @@ import 'dart:math' as math;
 import '../models/solution.dart';
 import 'giac_ffi.dart';
 import 'step_toolkit.dart';
+import 'symbolic.dart';
 import 'word_problem_parser.dart';
 
 part 'pattern_solver.dart';

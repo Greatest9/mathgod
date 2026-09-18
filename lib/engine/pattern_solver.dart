@@ -994,6 +994,24 @@ extension PatternFallback on SolverEngine {
       'd/dt[',
       'd/dt',
     ]);
+
+    // Phase B / M2: exact symbolic engine first — rational-aware, one rule
+    // card per step.  Anything outside its grammar falls through to the
+    // per-topic patterns below.
+    final v = input.toLowerCase().contains('d/dt') ? 't' : 'x';
+    final symbolic = SymbolicEngine.differentiate(expr, v: v);
+    if (symbolic != null) {
+      return Solution(
+        input: input,
+        domain: MathDomain.calculus,
+        operation: 'Derivative',
+        resultLatex: symbolic.resultLatex,
+        resultReadable: symbolic.resultReadable,
+        steps: symbolic.steps,
+        tip: 'Differentiate term by term using the standard rules.',
+      );
+    }
+
     final steps = <SolutionStep>[];
     steps.add(
       SolutionStep(
