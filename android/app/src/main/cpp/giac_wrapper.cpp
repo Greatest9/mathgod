@@ -1,20 +1,28 @@
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
 #include <string>
 #include <stdexcept>
-#include "giac/config.h"
-#include "giac/giac.h"
+
+#include "config.h"
+#include "giac.h"
 
 static giac::context* g_ctx = nullptr;
+
+// Giac evaluates against a single process-wide context. The wrapper is called
+// from several Dart isolates (each on its own thread), so every access to
+// g_ctx must be serialised or the CAS state races.
+static std::mutex g_ctx_mutex;
 
 extern "C" {
 
 __attribute__((visibility("default")))
 int giac_init() {
+    std::lock_guard<std::mutex> lock(g_ctx_mutex);
     if (g_ctx) return 0;
     try {
         g_ctx = new giac::context();
-        g_ctx->output_format = giac::_OUTPUT_FORMAT_NORMAL;
+        // output_format doesn't exist in this version – removed
         return 0;
     } catch (...) {
         return -1;
@@ -23,6 +31,7 @@ int giac_init() {
 
 __attribute__((visibility("default")))
 char* solve_math(const char* input) {
+    std::lock_guard<std::mutex> lock(g_ctx_mutex);
     if (!g_ctx) {
         const char* err = "Error: giac not initialised";
         char* out = static_cast<char*>(malloc(strlen(err) + 1));

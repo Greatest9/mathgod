@@ -1,3 +1,13 @@
+import java.util.Properties
+import java.io.FileInputStream
+
+// Load keystore properties
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("key.properties")
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+}
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -5,9 +15,9 @@ plugins {
 }
 
 android {
-    namespace = "com.mathgod.app"  // Changed from com.example.mathgod
+    namespace = "com.mathgod.app"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = "28.2.13676358"   // Fixed NDK version for Giac
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -18,6 +28,23 @@ android {
         jvmTarget = JavaVersion.VERSION_17.toString()
     }
 
+    signingConfigs {
+        create("release") {
+            // Priority 1: key.properties (Local) | Priority 2: Env Vars (CI)
+            keyAlias = (keystoreProperties["keyAlias"] as? String) ?: System.getenv("KEY_ALIAS")
+            keyPassword = (keystoreProperties["keyPassword"] as? String) ?: System.getenv("KEY_PASSWORD")
+            storePassword = (keystoreProperties["storePassword"] as? String) ?: System.getenv("KEYSTORE_PASSWORD")
+            
+            // Resolve keystore file path
+            storeFile = if (keystoreProperties.containsKey("storeFile")) {
+                file(keystoreProperties["storeFile"] as String)
+            } else {
+                // This matches the path created in your GitHub YAML
+                file("../mathgod-keystore.jks")
+            }
+        }
+    }
+
     defaultConfig {
         applicationId = "com.mathgod.app"
         minSdk = flutter.minSdkVersion
@@ -25,14 +52,12 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 
-        // NDK ABI filters (arm64-v8a covers all modern phones)
         ndk {
             abiFilters.add("arm64-v8a")
             abiFilters.add("armeabi-v7a")
             abiFilters.add("x86_64")
         }
 
-        // CMake build for Giac
         externalNativeBuild {
             cmake {
                 cppFlags("-std=c++17 -fexceptions -frtti")
@@ -41,7 +66,6 @@ android {
         }
     }
 
-    // Point to CMakeLists.txt
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
@@ -51,7 +75,7 @@ android {
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(

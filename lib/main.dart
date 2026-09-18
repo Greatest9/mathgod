@@ -43,11 +43,9 @@ class MathGodApp extends StatelessWidget {
       brightness: Brightness.dark,
       scaffoldBackgroundColor: bg,
       colorScheme: const ColorScheme.dark(
-        background: bg,
         surface: surface,
         primary: accent,
         secondary: green,
-        onBackground: textPrimary,
         onSurface: textPrimary,
         onPrimary: Colors.white,
       ),

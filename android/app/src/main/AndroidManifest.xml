@@ -3,7 +3,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@mipmap/launcher_icon"
         android:name="${applicationName}"
         android:label="math_god">
         <activity
@@ -28,7 +28,19 @@
             android:value="2"/>
     </application>
 
+    <!-- REQUIRED for url_launcher on Android 11+ (API 30+) -->
     <queries>
+        <!-- For opening https links -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+        <!-- For opening http links (fallback) -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="http" />
+        </intent>
+        <!-- Your existing PROCESS_TEXT intent -->
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>

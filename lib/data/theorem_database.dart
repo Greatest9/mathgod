@@ -433,6 +433,64 @@ class TheoremDatabase {
       ],
     ),
 
+    // ───── LAPLACE / FOURIER & ENGINEERING ─────
+    Theorem(
+      id: "laplace_transform",
+      name: "Laplace Transform",
+      domain: "Laplace / Fourier",
+      author: "Pierre-Simon Laplace",
+      year: "1785",
+      statement: "L{f(t)} = ∫₀^∞ e^{-st} f(t) dt",
+      statementLatex: "\\mathcal{L}\\{f(t)\\} = \\int_0^\\infty e^{-st} f(t) \\, dt",
+      explanation:
+          "Transforms linear differential equations into algebraic equations in the complex frequency domain (s-domain). Makes solving complex systems much simpler.",
+      proof:
+          "By definition, applying the integral operator to a derivative f'(t) yields sF(s) - f(0) using integration by parts. This property reduces calculus to algebra. ∎",
+      applications: [
+        "Control systems engineering",
+        "Circuit analysis (RLC circuits)",
+        "Solving constant-coefficient ODEs",
+        "Signal processing",
+      ],
+    ),
+    Theorem(
+      id: "fourier_series",
+      name: "Fourier Series",
+      domain: "Laplace / Fourier",
+      author: "Joseph Fourier",
+      year: "1822",
+      statement: "Periodic functions can be expressed as an infinite sum of sines and cosines.",
+      statementLatex: "f(t) = \\frac{a_0}{2} + \\sum_{n=1}^\\infty \\left[a_n \\cos\\left(\\frac{2\\pi nt}{T}\\right) + b_n \\sin\\left(\\frac{2\\pi nt}{T}\\right)\\right]",
+      explanation:
+          "Decomposes any periodic signal into its constituent frequencies (harmonics). The foundation of all frequency-domain analysis and modern telecommunications.",
+      proof:
+          "Exploits the orthogonality of sine and cosine over a period. Multiplying f(t) by a basis function and integrating over one period isolates the corresponding coefficient. ∎",
+      applications: [
+        "Audio compression (MP3)",
+        "Image compression (JPEG)",
+        "Telecommunications (LTE/5G)",
+        "Quantum mechanics",
+      ],
+    ),
+    Theorem(
+      id: "divergence_theorem",
+      name: "Divergence Theorem (Gauss's Theorem)",
+      domain: "Vector Calculus",
+      author: "Carl Friedrich Gauss",
+      year: "1813",
+      statement: "The outward flux of a vector field through a closed surface equals the volume integral of its divergence.",
+      statementLatex: "\\oiint_S \\mathbf{F} \\cdot d\\mathbf{S} = \\iiint_V (\\nabla \\cdot \\mathbf{F}) \\, dV",
+      explanation:
+          "Relates the flow of a vector field across a boundary surface to the behavior (sources/sinks) of the field inside the volume.",
+      proof:
+          "Approximating the volume as a grid of small cubes. The flux through shared faces cancels out, leaving only the flux through the outer boundary. Taking the limit yields the theorem. ∎",
+      applications: [
+        "Gauss's Law for Electricity (Maxwell's Equations)",
+        "Fluid dynamics (Continuity equation)",
+        "Heat conduction",
+      ],
+    ),
+
     // ───── UNSOLVED PROBLEMS ─────
     Theorem(
       id: "riemann",
