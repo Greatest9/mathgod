@@ -130,6 +130,7 @@ class SolverEngine {
     String giacCmd;
     String operation;
     MathDomain domain;
+    var integralIndefinite = false;
 
     try {
       if (_isDerivative(lower)) {
@@ -163,6 +164,7 @@ class SolverEngine {
           giacCmd = 'int(${parts[0]},x,${parts[1]},${parts[2]})';
         } else {
           giacCmd = 'int($inner,x)';
+          integralIndefinite = true;
         }
         operation = 'Integral';
         domain = MathDomain.calculus;
@@ -258,17 +260,26 @@ class SolverEngine {
       // ── Build explanation steps ───────────────────────────────────────────
       // One "how" card for the topic, then an independent check of the
       // value we are about to display.
+      //
+      // Giac renders its integration constant as a trailing `+x` on
+      // indefinite integrals; rewrite it to `+C` so what we display and
+      // verify reads correctly (definite integrals pass through untouched).
+      final shown = cleanGiacIntegral(rawResult,
+          indefinite: integralIndefinite);
+      final shownLatex = cleanGiacIntegral(resultLatex,
+          indefinite: integralIndefinite);
+
       final steps = <SolutionStep>[
         StepKit.method(operation, giacCmd),
-        StepKit.verification(_verify(operation, input, rawResult)),
+        StepKit.verification(_verify(operation, input, shown)),
       ];
 
       return Solution(
         input: input,
         domain: domain,
         operation: operation,
-        resultLatex: resultLatex,
-        resultReadable: rawResult,
+        resultLatex: shownLatex,
+        resultReadable: shown,
         steps: steps,
         tip: _tipFor(operation),
       );
@@ -284,6 +295,20 @@ class SolverEngine {
       out = out.substring(1, out.length - 1);
     }
     return out.replaceAll(r'\n', ' ').trim();
+  }
+
+  /// The Giac build embedded here appends the letter `x` as the constant of
+  /// integration on *indefinite* integrals: int(3*x^2,x) → '3*x^3/3+x'.
+  /// The trailing `+x` is that spurious constant (real x-terms are ordered
+  /// first, and definite integrals carry no constant), so rewrite it to the
+  /// conventional `+C` before display.
+  static String cleanGiacIntegral(String s, {required bool indefinite}) {
+    if (!indefinite) return s;
+    var out = s.trim();
+    if (out.endsWith('+x')) {
+      out = out.substring(0, out.length - 2).trimRight() + '+C';
+    }
+    return out;
   }
 
   // Minimal LaTeX rendering when Giac's latex() call also fails
