@@ -13,6 +13,8 @@
 // are differentiated; anything the parser cannot own yields null and the
 // caller keeps its existing behaviour.
 
+import 'dart:math' as math;
+
 import '../models/solution.dart';
 
 // ═══ Exact rational numbers ══════════════════════════════════════════════════
@@ -821,6 +823,322 @@ class SymbolicEngine {
   static String _clean(String s) => s
       .replaceAll('\\cdot ', '\\cdot ')
       .replaceAll(r'\ ', ' ');
+
+  // ═══ Integrate — u-substitution, chain-backwards ═══════════════════════
+
+  /// Integrate [expr] with respect to [v].  Null when the integrand is
+  /// outside the engine's grammar or has no elementary u-substitution that
+  /// the chain-backwards pass recognises.  The caller keeps its old pattern
+  /// path in that case.
+  static IntegralResult? integrate(String expr, {String v = 'x'}) {
+    final p = _Parser(expr.toLowerCase().replaceAll('e^(', 'exp('));
+    final f = p.run()?.canonical();
+    if (f == null) return null;
+
+    final steps = <SolutionStep>[
+      SolutionStep(
+        title: 'Integrate',
+        latex: '\\int ${f.toLatex()}\\,d$v',
+        explanation: 'Find F with F′ = ${_clean(f.toReadable())}, then add the '
+            'constant of integration C.',
+      ),
+    ];
+
+    // 1) u-substitution, chain-backwards.
+    final cands = <String, Ex>{};
+    void collect(Ex e) {
+      switch (e) {
+        case FnEx():
+          final a = e.arg;
+          if (!_isBareVar(a, v)) {
+            cands[a._key()] = a;
+          }
+          collect(a);
+case PowEx():
+          final b = e.base;
+          if (b is! VarEx && b is! NumEx) {
+            cands[b._key()] = b;
+          } else if (e.exp != 0 && e.exp != 1) {
+            cands[e._key()] = e;
+          }
+          collect(b);
+        case AddEx():
+          for (final t in e.terms) {
+            collect(t);
+          }
+        case MulEx():
+          for (final t in e.factors) {
+            collect(t);
+          }
+        default:
+          break;
+      }
+    }
+
+    collect(f);
+
+    for (final u in cands.values) {
+      final scratch = <SolutionStep>[];
+      final Ex du;
+      try {
+        du = _diff(u, v, scratch).canonical();
+      } on _UnsupportedError {
+        continue;
+      }
+      final r = MulEx([f, PowEx(du, -1)]).canonical();
+      final s = _replace(r, u, VarEx('t'));
+      if (_containsVar(s, v)) continue;
+      final A = _antideriv(s);
+      if (A == null) continue;
+      final F = _replace(A, VarEx('t'), u).canonical();
+
+      final inU = _replace(s, VarEx('t'), VarEx('u')).canonical();
+      final au = _replace(A, VarEx('t'), VarEx('u')).canonical();
+      steps.add(SolutionStep(
+        title: 'Choose u',
+        latex: 'u=${u.toLatex()}',
+        explanation:
+            'An inner function whose derivative already appears in the integrand.',
+        rule: 'U-Substitution',
+      ));
+      steps.add(SolutionStep(
+        title: 'Differentiate u',
+        latex: 'du=${du.toLatex()}\\,dx',
+        explanation: 'Write the rest of the integrand (times dx) as du.',
+        rule: 'U-Substitution',
+      ));
+      steps.add(SolutionStep(
+        title: 'Rewrite in u',
+        latex: '\\int ${inU.toLatex()}\\,du',
+        explanation: 'Everything is now in terms of u.',
+        rule: 'U-Substitution',
+      ));
+steps.add(SolutionStep(
+        title: 'Integrate in u',
+        latex: '\\int ${inU.toLatex()}\\,du=${au.toLatex()}+C',
+        explanation: 'Standard antiderivative.',
+        rule: 'Antiderivative',
+      ));
+      steps.add(SolutionStep(
+        title: 'Back-substitute',
+        latex: '=${F.toLatex()}+C',
+        explanation: 'Replace u = ${u.toReadable()} again.',
+        rule: 'U-Substitution',
+      ));
+      steps.add(SolutionStep(
+        title: 'Result',
+        latex: '\\int ${f.toLatex()}\\,dx=${F.toLatex()}+C',
+        explanation: 'Preserves the original variable; the constant C covers '
+            'the whole family of antiderivatives.',
+        rule: 'Result',
+      ));
+
+      return IntegralResult(
+        steps,
+        _clean('${F.toLatex()}+C'),
+        _clean('${F.toReadable()}+C'),
+        input: expr,
+        integrand: f,
+        antiderivative: F,
+      );
+    }
+
+// 2) Direct antiderivatives — no substitution needed.
+    final direct = _directAntideriv(f, v);
+    if (direct != null) {
+      final String ruleTitle;
+      if (f is NumEx) {
+        ruleTitle = 'Constant Rule';
+      } else if (f is PowEx && f.exp != -1) {
+        ruleTitle = 'Power Rule';
+      } else if (f is PowEx) {
+        ruleTitle = 'Logarithmic Rule';
+      } else if (f is FnEx && f.name == 'exp') {
+        ruleTitle = 'Exponential Rule';
+      } else if (f is FnEx && f.name == 'ln') {
+        ruleTitle = 'Logarithmic Rule';
+      } else if (f is FnEx) {
+        ruleTitle = 'Trigonometric Rule';
+      } else {
+        ruleTitle = 'Antiderivative';
+      }
+      steps.add(SolutionStep(
+        title: ruleTitle,
+        latex: '\\int ${f.toLatex()}\\,dx=${direct.toLatex()}+C',
+        explanation: 'Standard result from the table; check by differentiating '
+            'the right-hand side.',
+        rule: 'Antiderivative',
+      ));
+      steps.add(SolutionStep(
+        title: 'Result',
+        latex: '\\int ${f.toLatex()}\\,dx=${direct.toLatex()}+C',
+        explanation: 'The constant C covers the whole family of antiderivatives.',
+        rule: 'Result',
+      ));
+      return IntegralResult(
+        steps,
+        _clean('${direct.toLatex()}+C'),
+        _clean('${direct.toReadable()}+C'),
+        input: expr,
+        integrand: f,
+        antiderivative: direct,
+      );
+    }
+
+    return null;
+  }
+
+  /// True when [t] is a bound the definite-integral routine can evaluate:
+  /// an integer, a fraction, or "pi".
+  static bool isExactBound(String t) => _bound(t.trim()) != null;
+
+  /// F(b) and F(a) as doubles (null for either term when the antiderivative
+  /// is not constant-foldable at that bound).
+  static (double?, double?) evaluateBounds(
+    Ex antiderivative,
+    String v,
+    String aText,
+    String bText,
+  ) {
+    final ab = _bound(aText.trim());
+    final bb = _bound(bText.trim());
+    final a = ab == null ? null : _constFold(ab);
+    final b = bb == null ? null : _constFold(bb);
+    final fa = a == null ? null : _fixed(_eval(antiderivative, v, a));
+    final fb = b == null ? null : _fixed(_eval(antiderivative, v, b));
+    return (fb, fa);
+  }
+
+  /// Stable display helper for the FTC step (15 digits, no trailing junk).
+  static String fmtValue(double v) => _fmtD(v);
+
+  // ═══ Limit — L'Hôpital for finite targets ══════════════════════════════
+
+  /// Solve "expr, var, target" fragments that arrive as the inner text of
+  /// lim(...).  Returns null when the target is non-finite, the expression
+  /// is outside the grammar, or the indeterminate form does not resolve.
+  static LimitResult? limit(String expr) {
+    final parts = expr
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    if (parts.isEmpty || parts.length > 3) return null;
+    var frag = parts[0];
+    var v = 'x';
+    var targetText = '0';
+    if (parts.length == 3) {
+      v = parts[1];
+      targetText = parts[2];
+    } else if (parts.length == 2) {
+      if (_bound(parts[1]) != null) {
+        targetText = parts[1];
+      } else if (RegExp(r'^[a-z]$').hasMatch(parts[1])) {
+        v = parts[1];
+      } else {
+        return null;
+      }
+    }
+    if (_bound(targetText) == null) return null;
+    final bound = _bound(targetText)!;
+    final a0 = _constFold(bound) ?? 0;
+
+    final p = _Parser(frag.replaceAll('e^(', 'exp(').toLowerCase());
+    final f = p.run()?.canonical();
+    if (f == null) return null;
+
+    final steps = <SolutionStep>[
+      SolutionStep(
+        title: 'Limit',
+        latex: '\\lim_{$v\\to ${_boundLatex(bound)}} ${f.toLatex()}',
+        explanation: 'Value of the function as $v approaches ${_boundLatex(bound)}.',
+      ),
+    ];
+
+    // Direct substitution first.
+    final direct = _fixed(_eval(f, v, a0));
+    if (direct != null) {
+      steps.add(SolutionStep(
+        title: 'Direct Substitution',
+        latex: '=${_fmtD(direct)}',
+        explanation: 'The function is defined at the point, so substitute.',
+        rule: 'Direct Substitution',
+      ));
+      return LimitResult(steps, _fmtD(direct), _fmtD(direct), input: expr);
+    }
+
+    final q = _numDen(f);
+    if (q == null) return null;
+
+    final (num, den) = q;
+    final delta = 1e-4 * (1 + a0.abs());
+    final n0 = (_eval(num, v, a0) ?? double.nan).abs();
+    final d0 = (_eval(den, v, a0) ?? double.nan).abs();
+    final n1 = (_eval(num, v, a0 + delta) ?? double.nan).abs();
+    final d1 = (_eval(den, v, a0 + delta) ?? double.nan).abs();
+    final indet = (n0 < 1e-9 && d0 < 1e-9) ||
+        ((n1 > 8.0 && d1 > 8.0) && (n0 > 1e150 || d0 > 1e150));
+    if (!indet) return null;
+
+    final form =
+        (n0 < 1e-9 && d0 < 1e-9) ? '\\tfrac{0}{0}' : '\\tfrac{\\infty}{\\infty}';
+
+    var n = num;
+    var d = den;
+    steps.add(SolutionStep(
+      title: "L'Hôpital",
+      latex: '\\text{Indeterminate form: } $form',
+      explanation:
+          'Differentiate the numerator and the denominator separately, then '
+          're-evaluate — keep going while the form stays indeterminate.',
+      rule: "L'Hôpital",
+    ));
+
+    for (var i = 0; i < 5; i++) {
+      final sn = <SolutionStep>[];
+      final sd = <SolutionStep>[];
+      final Ex dn;
+      final Ex dd;
+      try {
+        dn = _diff(n, v, sn).canonical();
+        dd = _diff(d, v, sd).canonical();
+      } on _UnsupportedError {
+        return null;
+      }
+      steps.add(SolutionStep(
+        title: 'Differentiate top & bottom',
+        latex:
+            '\\lim_{$v\\to ${_boundLatex(bound)}}\\frac{${n.toLatex()}}{${d.toLatex()}}'
+            '\\overset{H}{=}\\lim_{$v\\to ${_boundLatex(bound)}}'
+            '\\frac{${dn.toLatex()}}{${dd.toLatex()}}',
+        explanation: 'Apply the rule once more only if this limit exists.',
+        rule: "L'Hôpital",
+      ));
+      n = dn;
+      d = dd;
+      final dv = _fixed(_eval(d, v, a0));
+      if (dv != null && dv.abs() > 1e-12) {
+        final nvv = _fixed(_eval(n, v, a0));
+        if (nvv != null) {
+          final val = nvv / dv;
+          if (val.isFinite) {
+            steps.add(SolutionStep(
+              title: 'Result',
+              latex: '=${_fmtD(val)}',
+              explanation: 'The ratio is now defined at the target.',
+              rule: "L'Hôpital",
+            ));
+            return LimitResult(steps, _fmtD(val), _fmtD(val), input: expr);
+          }
+        }
+      }
+      final n0b = (_eval(n, v, a0) ?? double.nan).abs();
+      final d0b = (_eval(d, v, a0) ?? double.nan).abs();
+      if (!(n0b < 1e-9 && d0b < 1e-9)) return null;
+    }
+
+    return null;
+  }
 }
 
 /// The engine parsed the expression but the differentiation rules do not cover
@@ -1056,3 +1374,396 @@ SolutionStep _step(String title, String latex, String explanation,
       explanation: explanation,
       rule: rule,
     );
+// ═══ M3 helpers — shared by integrate / limit / FTC ════════════════════════
+
+/// Result of a successful symbolic integration.
+class IntegralResult {
+  IntegralResult(
+    this.steps,
+    this.resultLatex,
+    this.resultReadable, {
+    required this.input,
+    required this.integrand,
+    required this.antiderivative,
+  });
+  final List<SolutionStep> steps;
+  final String resultLatex;
+  final String resultReadable;
+  final String input;
+  final Ex integrand;
+  final Ex antiderivative;
+}
+
+/// Result of a successful symbolic limit.
+class LimitResult {
+  LimitResult(this.steps, this.result, this.resultReadable, {required this.input});
+  final List<SolutionStep> steps;
+  final String result;
+  final String resultReadable;
+  final String input;
+}
+
+/// Reads "3", "-1", "3/2", "-1/2" into an exact [Q].  Null otherwise.
+Q? parseRational(String t) {
+  final s = t.trim();
+  if (RegExp(r'^[+-]?\d+$').hasMatch(s)) return Q.fromInt(int.parse(s));
+  final m = RegExp(r'^([+-]?\d+)\s*/\s*(\d+)$').firstMatch(s);
+  if (m == null) return null;
+  final d = int.parse(m.group(2)!);
+  if (d == 0) return null;
+  return Q.fromInt(int.parse(m.group(1)!)) / Q.fromInt(d);
+}
+
+/// The target bound for a limit / definite bound: an integer, fraction, or pi.
+Ex? _bound(String s) {
+  final q = parseRational(s);
+  if (q != null) return NumEx(q);
+  final t = s.replaceAll('π', 'pi');
+  if (t == 'pi') return VarEx('pi');
+  final m = RegExp(r'^(-?)([0-9]+)?\*?pi(?:\/([0-9]+))?$').firstMatch(t);
+  if (m != null) {
+    final a = (m.group(2) == null || m.group(2)!.isEmpty)
+        ? 1
+        : int.parse(m.group(2)!);
+    final d = m.group(3) == null ? 1 : int.parse(m.group(3)!);
+    if (d == 0) return null;
+    final k = parseRational('${m.group(1)}$a/$d');
+    if (k == null) return null;
+    return MulEx([VarEx('pi'), NumEx(k)]).canonical();
+  }
+  final m2 = RegExp(r'^(-?)([0-9]+)\/([0-9]+)\*pi$').firstMatch(t);
+  if (m2 != null) {
+    final d = int.parse(m2.group(3)!);
+    if (d == 0) return null;
+    final k = parseRational('${m2.group(1)}${m2.group(2)}/$d');
+    if (k == null) return null;
+    return MulEx([VarEx('pi'), NumEx(k)]).canonical();
+  }
+  return null;
+}
+
+String _boundLatex(Ex b) =>
+    (b is VarEx && b.name == 'pi') ? '\\pi' : b.toLatex();
+
+bool _isBareVar(Ex e, String v) => e is VarEx && e.name == v;
+
+bool _containsVar(Ex e, String v) {
+  switch (e) {
+    case VarEx():
+      return e.name == v;
+    case NumEx():
+      return false;
+    case FnEx():
+      return _containsVar(e.arg, v);
+    case PowEx():
+      return _containsVar(e.base, v);
+    case AddEx():
+      return e.terms.any((t) => _containsVar(t, v));
+    case MulEx():
+      return e.factors.any((t) => _containsVar(t, v));
+  }
+}
+
+/// Structural replacement (by canonical key, so composite u's match).
+Ex _replace(Ex e, Ex from, Ex to) {
+  if (e._key() == from._key()) return to;
+  switch (e) {
+    case AddEx():
+      return AddEx([for (final t in e.terms) _replace(t, from, to)]).canonical();
+    case MulEx():
+      return MulEx([for (final t in e.factors) _replace(t, from, to)]).canonical();
+    case PowEx():
+      return PowEx(_replace(e.base, from, to), e.exp).canonical();
+    case FnEx():
+      return FnEx(e.name, _replace(e.arg, from, to));
+    default:
+      return e;
+  }
+}
+
+/// Antiderivative in the service variable t.  Null when not recognised.
+Ex? _antideriv(Ex s) {
+  switch (s) {
+    case NumEx():
+      return MulEx([s, VarEx('t')]).canonical();
+    case VarEx():
+      if (s.name == 't') {
+        return MulEx([
+          NumEx(Q.fromInt(1) / Q.fromInt(2)),
+          PowEx(VarEx('t'), 2),
+        ]).canonical();
+      }
+      return null;
+case PowEx(base: final b, exp: final k):
+      if (b is VarEx && b.name == 't') {
+        if (k == -1) return FnEx('ln', VarEx('t'));
+        return MulEx([
+          PowEx(VarEx('t'), k + 1),
+          NumEx(Q.fromInt(1) / Q.fromInt(k + 1)),
+        ]).canonical();
+      }
+      return null;
+    case FnEx(name: final fn, arg: final a):
+      if (a is VarEx && a.name == 't') {
+        switch (fn) {
+          case 'sin':
+            return MulEx([NumEx(Q.fromInt(-1)), FnEx('cos', VarEx('t'))])
+                .canonical();
+          case 'cos':
+            return FnEx('sin', VarEx('t'));
+          case 'exp':
+            return FnEx('exp', VarEx('t'));
+          case 'ln':
+            return AddEx([
+              MulEx([VarEx('t'), FnEx('ln', VarEx('t'))]).canonical(),
+              MulEx([NumEx(Q.fromInt(-1)), VarEx('t')]).canonical(),
+            ]).canonical();
+        }
+      }
+      return null;
+    case MulEx():
+      Q coeff = Q.fromInt(1);
+      final rest = <Ex>[];
+      for (final f in s.factors) {
+        if (f is NumEx) {
+          coeff = coeff * f.v;
+        } else {
+          rest.add(f);
+        }
+      }
+      if (rest.isEmpty) return MulEx([NumEx(coeff), VarEx('t')]).canonical();
+      if (rest.length == 1) {
+        final inner = _antideriv(rest[0]);
+        if (inner == null) return null;
+        return coeff.isOne ? inner : MulEx([NumEx(coeff), inner]).canonical();
+      }
+      return null;
+    case AddEx():
+      final out = <Ex>[];
+      for (final t in s.terms) {
+        final a = _antideriv(t);
+        if (a == null) return null;
+        out.add(a);
+      }
+      return AddEx(out).canonical();
+  }
+}
+
+/// Antiderivative of a single-variable integrand with no substitution needed.
+Ex? _directAntideriv(Ex f, String v) {
+  switch (f) {
+    case NumEx():
+      return MulEx([f, VarEx(v)]).canonical();
+    case VarEx():
+      if (f.name == v) {
+        return MulEx([
+          NumEx(Q.fromInt(1) / Q.fromInt(2)),
+          PowEx(VarEx(v), 2),
+        ]).canonical();
+      }
+      return null;
+case PowEx(base: final b, exp: final k):
+      if (b is VarEx && b.name == v) {
+        if (k == -1) return FnEx('ln', VarEx(v));
+        return MulEx([
+          PowEx(VarEx(v), k + 1),
+          NumEx(Q.fromInt(1) / Q.fromInt(k + 1)),
+        ]).canonical();
+      }
+      return null;
+    case FnEx(name: final fn, arg: final a):
+      if (a is VarEx && a.name == v) {
+        switch (fn) {
+          case 'exp':
+            return FnEx('exp', VarEx(v));
+          case 'sin':
+            return MulEx([NumEx(Q.fromInt(-1)), FnEx('cos', VarEx(v))])
+                .canonical();
+          case 'cos':
+            return FnEx('sin', VarEx(v));
+          case 'ln':
+            return AddEx([
+              MulEx([VarEx(v), FnEx('ln', VarEx(v))]).canonical(),
+              MulEx([NumEx(Q.fromInt(-1)), VarEx(v)]).canonical(),
+            ]).canonical();
+        }
+      }
+      return null;
+    case MulEx():
+      Q coeff = Q.fromInt(1);
+      final rest = <Ex>[];
+      for (final fct in f.factors) {
+        if (fct is NumEx) {
+          coeff = coeff * fct.v;
+        } else {
+          rest.add(fct);
+        }
+      }
+      if (rest.length != 1) return null;
+      final inner = _directAntideriv(rest[0], v);
+      if (inner == null) return null;
+      return coeff.isOne ? inner : MulEx([NumEx(coeff), inner]).canonical();
+    case AddEx():
+      final out = <Ex>[];
+      for (final t in f.terms) {
+        final a = _directAntideriv(t, v);
+        if (a == null) return null;
+        out.add(a);
+      }
+      return AddEx(out).canonical();
+  }
+}
+
+/// Split f into (numerator, denominator); only when it is a genuine quotient.
+(Ex, Ex)? _numDen(Ex e) {
+  if (e is FnEx && e.name == 'sec') {
+    return (NumEx(Q.fromInt(1)), FnEx('cos', e.arg));
+  }
+  if (e is PowEx && e.exp < 0) {
+    return (NumEx(Q.fromInt(1)), PowEx(e.base, -e.exp).canonical());
+  }
+  if (e is! MulEx) return null;
+  final negs = e.factors.whereType<PowEx>().where((x) => x.exp < 0).toList();
+  if (negs.isEmpty) return null;
+  final numF = e.factors.where((x) => !(x is PowEx && x.exp < 0)).toList();
+  final num = numF.isEmpty
+      ? NumEx(Q.fromInt(1))
+      : MulEx(numF).canonical();
+  final den = negs.length == 1
+      ? PowEx(negs[0].base, -negs[0].exp).canonical()
+      : MulEx([
+          for (final x in negs)
+            PowEx(x.base, -x.exp).canonical(),
+        ]).canonical();
+  return (num, den);
+}
+
+/// Numeric evaluation of [e] with [v] := [x0]; pi resolves to its constant.
+/// Returns null when any term cannot be evaluated.
+double? _eval(Ex e, String v, double x0) {
+  switch (e) {
+    case NumEx():
+      return e.v.toDouble();
+    case VarEx():
+      if (e.name == v) return x0;
+      if (e.name == 'pi') return math.pi;
+      return null;
+    case PowEx():
+      final b = _eval(e.base, v, x0);
+      if (b == null) return null;
+      return math.pow(b, e.exp).toDouble();
+    case FnEx():
+      final a = _eval(e.arg, v, x0);
+      if (a == null) return null;
+      switch (e.name) {
+        case 'sin':
+          return math.sin(a);
+        case 'cos':
+          return math.cos(a);
+        case 'tan':
+          return math.tan(a);
+        case 'sec':
+          return 1 / math.cos(a);
+        case 'csc':
+          return 1 / math.sin(a);
+        case 'cot':
+          return 1 / math.tan(a);
+        case 'exp':
+          return math.exp(a);
+        case 'ln':
+          return a > 0 ? math.log(a) : null;
+        case 'sqrt':
+          return a >= 0 ? math.sqrt(a) : null;
+      }
+      return null;
+    case AddEx():
+      double? s = 0;
+      for (final t in e.terms) {
+        final w = _eval(t, v, x0);
+        if (w == null) return null;
+        s = s! + w;
+      }
+      return s;
+    case MulEx():
+      double p = 1;
+      for (final f in e.factors) {
+        if (f is PowEx && f.exp < 0) {
+          final b = _eval(f.base, v, x0);
+          if (b == null) return null;
+          p = p / math.pow(b, -f.exp);
+        } else {
+          final w = _eval(f, v, x0);
+          if (w == null) return null;
+          p = p * w;
+        }
+      }
+      return p;
+  }
+}
+
+/// Numeric constant folding (pi allowed); null when unresolved symbols remain.
+double? _constFold(Ex e) {
+  switch (e) {
+    case NumEx():
+      return e.v.toDouble();
+    case VarEx():
+      return e.name == 'pi' ? math.pi : null;
+    case PowEx():
+      final b = _constFold(e.base);
+      if (b == null) return null;
+      return math.pow(b, e.exp).toDouble();
+    case FnEx():
+      final a = _constFold(e.arg);
+      if (a == null) return null;
+      switch (e.name) {
+        case 'sin':
+          return math.sin(a);
+        case 'cos':
+          return math.cos(a);
+        case 'tan':
+          return math.tan(a);
+        case 'exp':
+          return math.exp(a);
+        case 'ln':
+          return a > 0 ? math.log(a) : null;
+      }
+      return null;
+    case AddEx():
+      double s = 0;
+      for (final t in e.terms) {
+        final v = _constFold(t);
+        if (v == null) return null;
+        s += v;
+      }
+      return s;
+    case MulEx():
+      double p = 1;
+      for (final f in e.factors) {
+        if (f is PowEx && f.exp < 0) {
+          final b = _constFold(PowEx(f.base, -f.exp));
+          if (b == null) return null;
+          p = p / b;
+        } else {
+          final v = _constFold(f);
+          if (v == null) return null;
+          p = p * v;
+        }
+      }
+      return p;
+  }
+}
+
+/// NaN / Infinity → null (callers treat as "undefined here").
+double? _fixed(double? v) => (v == null || v.isFinite) ? v : null;
+
+/// Stable numeric display: integers as-is, otherwise 15 significant digits,
+/// trailing zeros trimmed.
+String _fmtD(double v) {
+  if (v.abs() < 1e-12) return '0';
+  if (v == v.roundToDouble() && v.abs() < 1e15) return v.round().toString();
+  var s = v.toStringAsPrecision(15);
+  if (s.contains('.')) {
+    s = s.replaceAll(RegExp(r'0+$'), '').replaceAll(RegExp(r'\.$'), '');
+  }
+  return s;
+}

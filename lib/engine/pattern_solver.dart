@@ -1284,11 +1284,73 @@ extension PatternFallback on SolverEngine {
   }
 
   Solution _integral(String input) {
+    // ═══ M3 engine-first ═══════════════════════════════════════════════════
+    // Exact u-substitution / direct antiderivatives in Dart.  Definite
+    // integrals get a real FTC Part 2 evaluation when the bounds are exact.
+    final expr0 = _ex(input, ['int(', 'integrate(', 'antideriv(']);
+    final parts = expr0
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    if (parts.isNotEmpty) {
+      var clean = parts.first;
+      var v = 'x';
+      String? aT;
+      String? bT;
+      if (parts.length >= 3 &&
+          SymbolicEngine.isExactBound(parts[parts.length - 2]) &&
+          SymbolicEngine.isExactBound(parts.last)) {
+        aT = parts[parts.length - 2];
+        bT = parts.last;
+        if (parts.length == 4 && RegExp(r'^[a-z]$').hasMatch(parts[1])) {
+          v = parts[1];
+          clean = parts[0];
+        }
+      } else if (parts.length == 2 && RegExp(r'^[a-z]$').hasMatch(parts[1])) {
+        v = parts[1];
+      }
+      final eng = SymbolicEngine.integrate(clean, v: v);
+      if (eng != null) {
+        final s = List<SolutionStep>.from(eng.steps);
+        var rL = eng.resultLatex;
+        var rR = eng.resultReadable;
+        if (aT != null && bT != null) {
+          final (fb, fa) =
+              SymbolicEngine.evaluateBounds(eng.antiderivative, v, aT, bT);
+          if (fb != null && fa != null) {
+            final val = fb - fa;
+            s.add(SolutionStep(
+              title: 'FTC Part 2',
+              latex:
+                  '\\int_{${_tex(aT)}}^{${_tex(bT)}} ${eng.integrand.toLatex()}\\,d$v'
+                  '=${eng.antiderivative.toLatex()}\\Bigr|_{${_tex(aT)}}^{${_tex(bT)}}'
+                  '=${SymbolicEngine.fmtValue(fb)}-${SymbolicEngine.fmtValue(fa)}'
+                  '=${SymbolicEngine.fmtValue(val)}',
+              explanation:
+                  'Evaluate the antiderivative at the bounds and subtract.',
+              rule: 'FTC 2',
+            ));
+            rL = SymbolicEngine.fmtValue(val);
+            rR = rL;
+          }
+        }
+        return Solution(
+          input: expr0,
+          domain: MathDomain.calculus,
+          operation: 'Integral',
+          resultLatex: rL,
+          resultReadable: rR,
+          steps: s,
+        );
+      }
+    }
+
+    // ═══ legacy fallback ══════════════════════════════════════════════════
     final expr = _ex(input, ['int(', 'integrate(', 'antideriv(']);
     final isD = expr.contains(',');
     final clean = isD ? expr.split(',').first.trim() : expr;
-    final steps = <SolutionStep>[];
-    steps.add(
+    final steps = <SolutionStep>[
       SolutionStep(
         title: isD ? 'Definite Integral' : 'Indefinite Integral',
         latex: isD
@@ -1296,7 +1358,7 @@ extension PatternFallback on SolverEngine {
             : '\\int ${_tex(clean)}\\,dx',
         explanation: isD ? 'Net signed area a to b.' : 'Family F(x)+C.',
       ),
-    );
+    ];
     if (RegExp(r'x\^-?\d+').hasMatch(clean) ||
         clean == 'x' ||
         RegExp(r'^\d+$').hasMatch(clean))
@@ -1500,14 +1562,32 @@ extension PatternFallback on SolverEngine {
   Solution _limit(String input) {
     final inner = _ex(input, ['lim(', 'limit(', 'lim ']);
     final inf = inner.contains('inf') || inner.contains('∞');
-    final steps = <SolutionStep>[];
-    steps.add(
+
+    // ═══ M3 engine-first ═══════════════════════════════════════════════════
+    // Finite targets only; infinite limits and anything the grammar cannot
+    // parse fall through to the legacy path.
+    if (!inf) {
+      final eng = SymbolicEngine.limit(inner);
+      if (eng != null) {
+        return Solution(
+          input: inner,
+          domain: MathDomain.calculus,
+          operation: 'Limit',
+          resultLatex: eng.result,
+          resultReadable: eng.resultReadable,
+          steps: eng.steps,
+          tip: "Substitution → L'Hôpital.",
+        );
+      }
+    }
+
+    final steps = <SolutionStep>[
       const SolutionStep(
         title: 'Limit',
         latex: '\\lim_{x\\to a}f(x)=L',
         explanation: 'Value f approaches as x→a.',
       ),
-    );
+    ];
     steps.add(
       const SolutionStep(
         title: 'Direct Substitution',
@@ -1562,6 +1642,25 @@ extension PatternFallback on SolverEngine {
   }
 
   Solution _determinant(String input) {
+    // ═══ M3 engine-first ═══════════════════════════════════════════════════
+    // Exact rational arithmetic + a cofactor-expansion card trace.
+    final mat = ExactMatrix.fromText(_ex(input, ['det(', 'determinant(']));
+    if (mat != null && mat.isSquare && mat.n >= 2 && mat.n <= 4) {
+      final steps = <SolutionStep>[];
+      final v = mat.detCofactor(steps);
+      if (v != null) {
+        return Solution(
+          input: input,
+          domain: MathDomain.linearAlgebra,
+          operation: 'Determinant',
+          resultLatex: v.toLatex(),
+          resultReadable: v.toReadable(),
+          steps: steps,
+          tip: 'det=0 → singular matrix.',
+        );
+      }
+    }
+
     final steps = <SolutionStep>[];
     final m = RegExp(
       r'\[\[(-?\d+\.?\d*),(-?\d+\.?\d*)\],\[(-?\d+\.?\d*),(-?\d+\.?\d*)\]\]',
@@ -1613,6 +1712,37 @@ extension PatternFallback on SolverEngine {
   }
 
   Solution _matrixInverse(String input) {
+    // ═══ M3 engine-first ═══════════════════════════════════════════════════
+    // Full Gauss-Jordan trace on [A | I], exact fractions throughout.
+    final mat = ExactMatrix.fromText(_ex(input, ['inv(', 'inverse(']));
+    if (mat != null && mat.isSquare) {
+      final steps = <SolutionStep>[];
+      final inv = mat.inverseGaussJordan(steps);
+      if (inv != null) {
+        return Solution(
+          input: input,
+          domain: MathDomain.linearAlgebra,
+          operation: 'Matrix Inverse',
+          resultLatex: inv.toLatex(),
+          resultReadable: inv.toReadable(),
+          steps: steps,
+          tip: 'Verify: A·A⁻¹=I.',
+        );
+      }
+      if (mat.n <= 4) {
+        return Solution(
+          input: input,
+          domain: MathDomain.linearAlgebra,
+          operation: 'Matrix Inverse',
+          resultLatex: '\\text{No inverse: }A\\text{ is singular}',
+          resultReadable: 'No inverse (det=0)',
+          steps: steps,
+          tip: 'Verify: det(A)=0 ⇒ singular.',
+          isUnsolvable: true,
+        );
+      }
+    }
+
     final steps = <SolutionStep>[];
     final m = RegExp(
       r'\[\[(-?\d+\.?\d*),(-?\d+\.?\d*)\],\[(-?\d+\.?\d*),(-?\d+\.?\d*)\]\]',
@@ -1673,7 +1803,56 @@ extension PatternFallback on SolverEngine {
     );
   }
 
+  String _eigenLatex(List<EigenRoot> roots) {
+    if (roots.length == 1 && roots.first.repeated) {
+      return '\\lambda=${roots.first.latex}\\;\\text{(double)}';
+    }
+    return [
+      for (var i = 0; i < roots.length; i++) '\\lambda_{${i + 1}}=${roots[i].latex}',
+    ].join(',\\;');
+  }
+
+  String _eigenExpl(List<EigenRoot> roots) {
+    if (roots.length == 1 && roots.first.repeated) {
+      return 'The characteristic polynomial has the repeated root '
+          'λ=${roots.first.readable}.';
+    }
+    return 'Each λ satisfies det(A−λI)=0, giving the eigenvalues of A.';
+  }
+
   Solution _eigenvalue(String input) {
+    // ═══ M3 engine-first ═══════════════════════════════════════════════════
+    // Exact characteristic polynomial (det(λI−A)) plus exact roots: integers,
+    // fractions, reduced radicals, or complex pairs; cubics factored by the
+    // rational-root theorem when they factor.
+    final mat = ExactMatrix.fromText(_ex(input, ['eigen(', 'eig(', 'eigenvalue(']));
+    final ea = mat == null ? null : eigenAnalysis(mat);
+    if (ea != null) {
+      final steps = <SolutionStep>[
+        SolutionStep(
+          title: 'Characteristic Polynomial',
+          latex: '\\det(A-\\lambda I)=${ea.polynomialLatex}=0',
+          explanation: 'Solve the characteristic equation for λ.',
+          rule: 'Characteristic Polynomial',
+        ),
+        SolutionStep(
+          title: 'Eigenvalues',
+          latex: _eigenLatex(ea.roots),
+          explanation: _eigenExpl(ea.roots),
+          rule: 'Solve Polynomial',
+        ),
+      ];
+      return Solution(
+        input: input,
+        domain: MathDomain.linearAlgebra,
+        operation: 'Eigenvalues',
+        resultLatex: _eigenLatex(ea.roots),
+        resultReadable: ea.roots.map((r) => r.readable).join(', '),
+        steps: steps,
+        tip: 'Sum of eigenvalues=trace. Product=determinant.',
+      );
+    }
+
     final steps = <SolutionStep>[];
     final m = RegExp(
       r'\[\[(-?\d+\.?\d*),(-?\d+\.?\d*)\],\[(-?\d+\.?\d*),(-?\d+\.?\d*)\]\]',

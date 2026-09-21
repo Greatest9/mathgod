@@ -260,9 +260,9 @@ class SolutionVerifier {
       final b = double.tryParse(hi);
       if (a != null && b != null && v == 'x') {
         final simpson = _simpson(parts[0], a, b);
-        final reported = _number(_g('evalf(abs(($result)))'));
+        final reported = _number(_g('evalf(($result))'));
         if (simpson != null && reported != null) {
-          final err = (simpson - reported).abs() / (1 + reported.abs());
+          final err = _relErr(simpson, reported);
           if (err < 1e-3) {
             return _verified(
               'independent quadrature',
@@ -317,7 +317,7 @@ class SolutionVerifier {
     final f = parts[0];
     final v = parts[1].trim();
     final target = parts[2].trim();
-    final reported = _number(_g('evalf(abs(($result)))'));
+    final reported = _number(_g('evalf(($result))'));
     final infinite = target.toLowerCase().contains('inf');
     if (reported == null) {
       return _unavailable(
@@ -394,7 +394,7 @@ class SolutionVerifier {
 
   Verification _determinant(String input, String result) {
     final m = _matrix(_inner(input, const ['det(', 'determinant(']));
-    final reported = _number(_g('evalf(abs(($result)))'));
+    final reported = _number(_g('evalf(($result))'));
     if (m == null || reported == null) {
       return _unavailable('The determinant could not be recomputed here.');
     }
@@ -404,7 +404,7 @@ class SolutionVerifier {
         'The independent expansion is only implemented up to 3×3.',
       );
     }
-    final err = (mine - reported).abs() / (1 + reported.abs());
+    final err = _relErr(mine, reported);
     if (err < 1e-6) {
       return _verified(
         'independent expansion',
@@ -690,6 +690,22 @@ class SolutionVerifier {
     }
     return null;
   }
+
+  /// Relative error between an independently-computed value and the reported
+  /// one. The reported value is signed: wrapping it in abs() silently turns a
+  /// negative result (e.g. a determinant) into a false mismatch.
+  static double _relErr(double mine, double reported) =>
+      (mine - reported).abs() / (1 + reported.abs());
+
+  /// Documented for test access (see test/step_toolkit_test.dart).
+  static double? expansionDeterminant(String matrixText) {
+    final m = _matrix(matrixText);
+    return m == null ? null : _det(m);
+  }
+
+  /// Documented for test access (see test/step_toolkit_test.dart).
+  static double relativeError(double mine, double reported) =>
+      _relErr(mine, reported);
 
   static Verification _verified(String check, String detail) =>
       Verification(VerificationStatus.verified, check, detail);
