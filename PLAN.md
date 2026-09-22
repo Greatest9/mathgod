@@ -34,7 +34,7 @@ Comment claimed "Run solver off the main thread", but `Future.microtask` stays o
 - History dedupe is adjacent-only (history_service.dart:44) — intentional, keep.
 - 2×2 inverse emits Formula + Gauss-Jordan cards even when the computed inverse step is shown — mildly redundant pedagogy; keep as-is unless omitting looks better.
 
-### A6 · Triangle: home-screen "Geometry" card closes the app `[ ]`
+### A6 · Triangle: home-screen "Geometry" card closes the app `[x]`
 - Repro: home → tap **Geometry** (`home_screen.dart:378` pre-fills `sin(pi/4)`) → the app closes. A process death, so the Dart side is not the culprit.
 - Ruled out locally: `sin(pi/4)` in the pattern path is fine (`Trigonometry`, `frac{sqrt{2}}{2}`, no throw) and there is no isolate boundary problem here.
 - Working hypothesis: a native crash inside Giac on the exact-trig branch — `giacCmd = 'simplify($input)'` (solver_engine.dart, trig branch) and/or the follow-up `latex(...)` call. The trig branch already exists because `normal()` crashes the native lib on e.g. `sin(pi/8)`, so this build's trig simplification is suspect.
@@ -85,7 +85,13 @@ Comment claimed "Run solver off the main thread", but `Future.microtask` stays o
   - `lib/engine/symbolic.dart` adds `integrate(expr)` and `limit(expr)` engines, both engine-first wired into `pattern_solver.dart` `_integral`/`_limit` (legacy fallback preserved), plus `_determinant`/`_matrixInverse`/`_eigenvalue` wired to `matrix_algebra.dart`. Definite integrals use `evaluateBounds` + `fmtValue` → real FTC Part 2 card. `pi`-bounded limits fold (`pi/2`, `3/2*pi`) and near-zero results snap to `0`.
   - Tests: `test/matrix_algebra_test.dart` (det 2×2/3×3/fractional/4×4, inverse + singular + 3×3, eigen sqrt/rational/repeated/complex/3×3) + 40 new `SymbolicEngine` integrate/limit cases. Full suite 65 tests green, `flutter analyze` 0 errors (59 pre-existing infos/warnings).
   - Engine-first wiring verified by `_determinant`/`_matrixInverse`/`_eigenvalue`/`_integral`/`_limit` in the pattern fallback; the giac-first `solve()` path still prefers Giac's value and appends the honest verification card.
-- **[ ] M4 · Fill gap topics** — Laplace/inverse Laplace via table transforms; literal `F(x,y,z)` parsing for vector calculus / line integrals / multiple integrals / partial derivatives; equation-solving strategies (factor → isolate → check, quadratic formula).
+- **[x] M4 · Fill gap topics** — Laplace/inverse Laplace via table transforms; literal `F(x,y,z)` parsing for vector calculus / line integrals / multiple integrals / partial derivatives; equation-solving strategies (factor → isolate → check, quadratic formula).
+  - `lib/engine/pattern_solver.dart`:
+    - `_laplaceCore` extends the Laplace table: linearity sums, scaling `k·f(t)`, `t^n e^{at}` / `t·e^{at}` (s-shift), `e^{at} sin/cos(ωt)`, `sinh/cosh(at)`; trig/hyperbolic rows tolerate the `3*t` form.
+    - `_invLaplaceCore` extends the inverse table: constants `k/s`, `k/s^n` scaling, `k/(s²±ω²)` (now with the `k/ω` factor, fixing the old sine row that dropped `k`), `1/(s±a)^n`, s-shifted sine/cosine `((s±a)²+ω²)`, hyperbolic rows, linearity sums, and cover-up partial fractions for distinct real poles `N(s)/((s-p1)(s-p2))`.
+    - `_solveEquation` + `solve(...)` dispatch: normalized to one side, `_polyCoeffs` extracts (a,b,c) handling `*`/bare terms, then linear isolate, quadratic via discriminant + perfect-square factor step + formula, complex-root case, contradictions, factored `(x-r1)(x-r2)=0` via zero-product, exact rational roots via `_fracQ`; word-parser inputs `roots of` / `solutions to` already route through `solve(...)`.
+    - `_fnCall` parses literal `F(x,y,z)`; `_partialDerivative` (second-arg variable + keeps function name), `_multipleIntegral`, `_lineIntegral`, `_vectorCalculus` now echo the actual function/field in steps and results instead of generic `f`.
+  - Tests: `test/m4_gap_test.dart` — 29 cases (solve linear/quadratic/factored/complex/none, Laplace table rows + linearity + s-shift, inverse table rows + partial fractions, F(x,y,z) parsing across partial/double/triple/gradient/div). Full suite 97 green; `flutter analyze` 0 errors.
 
 ### Topic coverage tiers (from the 26 dispatchers)
 
@@ -121,10 +127,10 @@ Status: implemented and `flutter analyze`-clean. On-device check done 2026-09-17
 1. ~~**Phase C** (graphing rework)~~ — done.
 2. ~~**A2** (P1 jank) + native Giac mutex~~ — done (needs native rebuild).
 3. ~~**A3 + A4** (P2/P3 cleanups)~~ — done.
-4. **M1** — step toolkit + verification everywhere; changes all topics, no math rewrite.
-5. **M2** — AST derivative engine.
-6. **M3** — matrices / integrals / limits depth.
-7. **M4** — gap topics + equation-solving.
+4. ~~**M1** — step toolkit + verification everywhere; changes all topics, no math rewrite.~~ — done.
+5. ~~**M2** — AST derivative engine.~~ — done.
+6. ~~**M3** — matrices / integrals / limits depth.~~ — done.
+7. ~~**M4** — gap topics + equation-solving.~~ — done.
 
 ---
 

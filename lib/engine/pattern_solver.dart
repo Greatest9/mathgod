@@ -32,6 +32,7 @@ extension PatternFallback on SolverEngine {
       return _taylorSeries(input);
     if (lower.startsWith('line_int(') || lower.startsWith('lineint('))
       return _lineIntegral(input);
+    if (lower.startsWith('solve(')) return _solveEquation(input);
 
     if (_isDerivative(lower)) return _derivative(input);
     if (_isIntegral(lower)) return _integral(input);
@@ -88,6 +89,57 @@ extension PatternFallback on SolverEngine {
 
   String _laplaceLookup(String expr, List<SolutionStep> steps) {
     final e = expr.replaceAll(' ', '').toLowerCase();
+    final summands = _signedParts(e);
+    if (summands.length > 1) {
+      steps.add(
+        const SolutionStep(
+          title: 'Linearity',
+          latex: r'\mathcal{L}\{a_1f_1+\cdots+a_nf_n\}=\sum a_i\mathcal{L}\{f_i\}',
+          explanation: 'Transform each term separately and add the results.',
+        ),
+      );
+      final outs = <String>[];
+      for (final part in summands) {
+        var sign = '';
+        var body = part;
+        if (body.startsWith('+')) {
+          body = body.substring(1);
+        } else if (body.startsWith('-')) {
+          sign = '-';
+          body = body.substring(1);
+        }
+        final inner = _laplaceCore(body, steps);
+        if (inner.contains('unknown form')) {
+          return '\\mathcal{L}\\{${_tex(expr)}\\}';
+        }
+        outs.add(sign + inner);
+      }
+      var joined = '';
+      for (final o in outs) {
+        final sign = o.startsWith('-') ? ' - ' : ' + ';
+        final body = o.startsWith('-') || o.startsWith('+') ? o.substring(1) : o;
+        joined += sign + body;
+      }
+      return joined.trim().startsWith('-')
+          ? joined.trim()
+          : joined.replaceFirst(RegExp(r'^\s*\+\s*'), '').trim();
+    }
+    final lead = e.trim().startsWith('-') ? '-' : '';
+    final core = _laplaceCore(_stripSign(e), steps);
+    if (core.contains('unknown form')) {
+      steps.add(
+        const SolutionStep(
+          title: 'Linearity',
+          latex: r'\mathcal{L}\{af+bg\}=a\mathcal{L}\{f\}+b\mathcal{L}\{g\}',
+          explanation: 'Decompose into recognizable pieces.',
+        ),
+      );
+      return '\\mathcal{L}\\{${_tex(expr)}\\}';
+    }
+    return lead.isEmpty ? core : '- $core';
+  }
+
+  String _laplaceCore(String e, List<SolutionStep> steps) {
     if (e == '1' || e == 'u(t)') {
       steps.add(
         const SolutionStep(
@@ -121,19 +173,90 @@ extension PatternFallback on SolverEngine {
       );
       return '\\frac{$f}{s^{${n + 1}}}';
     }
-    final expA = RegExp(r'^e\^\(?(-?\d*\.?\d*)t\)?$').firstMatch(e);
-    if (expA != null) {
-      final a = expA.group(1)!.isEmpty ? '1' : expA.group(1)!;
+    final tExp =
+        RegExp(r'^t(?:\^(\d+))?\*?e\^\(?(-?\d*\.?\d*)\*?t\)?$').firstMatch(e);
+    if (tExp != null) {
+      final n = tExp.group(1) == null ? 1 : int.parse(tExp.group(1)!);
+      final a = _numOrOne(tExp.group(2));
       steps.add(
         SolutionStep(
-          title: 'e^(${a}t)',
-          latex: r'\mathcal{L}\{e^{at}\}=\frac{1}{s-a}',
-          explanation: 'a=$a',
+          title: 't^$n e^(${_fmt(a.toDouble())}t)',
+          latex:
+              r'\mathcal{L}\{t^n e^{at}\}=\frac{n!}{(s-a)^{n+1}}',
+          explanation: 'n=$n, a=${_fmt(a.toDouble())} — s-shift theorem.',
         ),
       );
-      return '\\frac{1}{s-(${a})}';
+      return '\\frac{${_fact(n)}}{(s${_signedNum(-a)})^{${n + 1}}}';
     }
-    final sinW = RegExp(r'^sin\((\d*\.?\d*)t\)$').firstMatch(e);
+    final expA = RegExp(r'^e\^\(?(-?\d*\.?\d*)\*?t\)?$').firstMatch(e);
+    if (expA != null) {
+      final a = _numOrOne(expA.group(1));
+      steps.add(
+        SolutionStep(
+          title: 'e^(${_fmt(a.toDouble())}t)',
+          latex: r'\mathcal{L}\{e^{at}\}=\frac{1}{s-a}',
+          explanation: 'a=${_fmt(a.toDouble())}',
+        ),
+      );
+      return '\\frac{1}{s${_signedNum(-a)}}';
+    }
+    final eSin = RegExp(
+            r'^e\^\(?(-?\d*\.?\d*)\*?t\)?\*?sin\((\d+\.?\d*)\*?t\)$')
+        .firstMatch(e);
+    if (eSin != null) {
+      final a = _numOrOne(eSin.group(1)).toDouble();
+      final w = double.parse(eSin.group(2)!);
+      steps.add(
+        SolutionStep(
+          title: 'e^(${_fmt(a)}t) sin(${_fmt(w)}t)',
+          latex:
+              r'\mathcal{L}\{e^{at}\sin(\omega t)\}=\frac{\omega}{(s-a)^2+\omega^2}',
+          explanation: 'a=${_fmt(a)}, ω=${_fmt(w)} — s-shift + sine row.',
+        ),
+      );
+      return '\\frac{${_fmt(w)}}{(s${_signedNum(-a)})^2+${_fmt(w * w)}}';
+    }
+    final eCos = RegExp(
+            r'^e\^\(?(-?\d*\.?\d*)\*?t\)?\*?cos\((\d+\.?\d*)\*?t\)$')
+        .firstMatch(e);
+    if (eCos != null) {
+      final a = _numOrOne(eCos.group(1)).toDouble();
+      final w = double.parse(eCos.group(2)!);
+      steps.add(
+        SolutionStep(
+          title: 'e^(${_fmt(a)}t) cos(${_fmt(w)}t)',
+          latex:
+              r'\mathcal{L}\{e^{at}\cos(\omega t)\}=\frac{s-a}{(s-a)^2+\omega^2}',
+          explanation: 'a=${_fmt(a)}, ω=${_fmt(w)} — s-shift + cosine row.',
+        ),
+      );
+      return '\\frac{s${_signedNum(-a)}}{(s${_signedNum(-a)})^2+${_fmt(w * w)}}';
+    }
+    final sinhW = RegExp(r'^sinh\((-?\d*\.?\d*)\*?t\)$').firstMatch(e);
+    if (sinhW != null) {
+      final a = _numOrOne(sinhW.group(1));
+      steps.add(
+        SolutionStep(
+          title: 'sinh(${_fmt(a)}t)',
+          latex: r'\mathcal{L}\{\sinh(at)\}=\frac{a}{s^2-a^2}',
+          explanation: 'a=${_fmt(a)} — hyperbolic sine row.',
+        ),
+      );
+      return '\\frac{${_fmt(a)}}{s^2-${_fmt(a * a)}}';
+    }
+    final coshW = RegExp(r'^cosh\((-?\d*\.?\d*)\*?t\)$').firstMatch(e);
+    if (coshW != null) {
+      final a = _numOrOne(coshW.group(1));
+      steps.add(
+        SolutionStep(
+          title: 'cosh(${_fmt(a)}t)',
+          latex: r'\mathcal{L}\{\cosh(at)\}=\frac{s}{s^2-a^2}',
+          explanation: 'a=${_fmt(a)} — hyperbolic cosine row.',
+        ),
+      );
+      return '\\frac{s}{s^2-${_fmt(a * a)}}';
+    }
+    final sinW = RegExp(r'^sin\((\d*\.?\d*)\*?t\)$').firstMatch(e);
     if (sinW != null) {
       final w = sinW.group(1)!.isEmpty ? '1' : sinW.group(1)!;
       final w2 = _fmt((double.tryParse(w) ?? 1) * (double.tryParse(w) ?? 1));
@@ -146,7 +269,7 @@ extension PatternFallback on SolverEngine {
       );
       return '\\frac{$w}{s^2+$w2}';
     }
-    final cosW = RegExp(r'^cos\((\d*\.?\d*)t\)$').firstMatch(e);
+    final cosW = RegExp(r'^cos\((\d*\.?\d*)\*?t\)$').firstMatch(e);
     if (cosW != null) {
       final w = cosW.group(1)!.isEmpty ? '1' : cosW.group(1)!;
       final w2 = _fmt((double.tryParse(w) ?? 1) * (double.tryParse(w) ?? 1));
@@ -170,14 +293,21 @@ extension PatternFallback on SolverEngine {
       );
       return '\\frac{${c.group(1)!}}{s}';
     }
-    steps.add(
-      const SolutionStep(
-        title: 'Linearity',
-        latex: r'\mathcal{L}\{af+bg\}=a\mathcal{L}\{f\}+b\mathcal{L}\{g\}',
-        explanation: 'Decompose into recognizable pieces.',
-      ),
-    );
-    return '\\mathcal{L}\\{${_tex(expr)}\\}';
+    final scale = RegExp(r'^(\d+\.?\d*)\*?(.+)$').firstMatch(e);
+    if (scale != null) {
+      final k = scale.group(1)!;
+      final core = _laplaceCore(scale.group(2)!, steps);
+      if (core.contains('unknown form')) return core;
+      steps.add(
+        SolutionStep(
+          title: 'Scaling: $k',
+          latex: r'\mathcal{L}\{k f(t)\}=k\,\mathcal{L}\{f(t)\}',
+          explanation: 'Pull the constant out: $k·f(t).',
+        ),
+      );
+      return '$k\\cdot $core';
+    }
+    return 'unknown form';
   }
 
   // ═══ 2. INVERSE LAPLACE ══════════════════════════════════════════════════════
@@ -221,7 +351,56 @@ extension PatternFallback on SolverEngine {
 
   String _invLaplaceLookup(String expr, List<SolutionStep> steps) {
     final e = expr.replaceAll(' ', '').toLowerCase();
-    if (e == '1/s') return '1';
+    final summands = _signedParts(e);
+    if (summands.length > 1) {
+      steps.add(
+        const SolutionStep(
+          title: 'Linearity',
+          latex: r'\mathcal{L}^{-1}\{F+G\}=f(t)+g(t)',
+          explanation: 'Invert each term separately, add the results.',
+        ),
+      );
+      final outs = <String>[];
+      for (final part in summands) {
+        var sign = '';
+        var body = part;
+        if (body.startsWith('+')) {
+          body = body.substring(1);
+        } else if (body.startsWith('-')) {
+          sign = '-';
+          body = body.substring(1);
+        }
+        final inner = _invLaplaceCore(body, steps);
+        if (inner.contains('unknown form')) return 'f(t)';
+        outs.add(sign + inner);
+      }
+      var joined = '';
+      for (final o in outs) {
+        final sign = o.startsWith('-') ? ' - ' : ' + ';
+        final body = o.startsWith('-') || o.startsWith('+') ? o.substring(1) : o;
+        joined += sign + body;
+      }
+      return joined.trim().startsWith('-')
+          ? joined.trim()
+          : joined.replaceFirst(RegExp(r'^\s*\+\s*'), '').trim();
+    }
+    final lead = e.trim().startsWith('-') ? '-' : '';
+    final core = _invLaplaceCore(_stripSign(e), steps);
+    if (core.contains('unknown form')) return 'f(t)';
+    return lead.isEmpty ? core : '- $core';
+  }
+
+  String _invLaplaceCore(String e, List<SolutionStep> steps) {
+    if (e == '1/s') {
+      steps.add(
+        const SolutionStep(
+          title: '1/s',
+          latex: r'\mathcal{L}^{-1}\{1/s\}=1',
+          explanation: 'Unit step.',
+        ),
+      );
+      return '1';
+    }
     if (e == '1/s^2') {
       steps.add(
         const SolutionStep(
@@ -243,6 +422,31 @@ extension PatternFallback on SolverEngine {
         ),
       );
       return '\\frac{t^{${n - 1}}}{${_fact(n - 1)}}';
+    }
+    final cs = RegExp(r'^(\d+\.?\d*)/s$').firstMatch(e);
+    if (cs != null) {
+      steps.add(
+        SolutionStep(
+          title: '${cs.group(1)!}/s',
+          latex: r'\mathcal{L}^{-1}\{k/s\}=k',
+          explanation: 'Constant term from scaling.',
+        ),
+      );
+      return '${cs.group(1)!}';
+    }
+    final csn = RegExp(r'^(\d+\.?\d*)/s\^(\d+)$').firstMatch(e);
+    if (csn != null) {
+      final k = csn.group(1)!;
+      final n = int.parse(csn.group(2)!);
+      steps.add(
+        SolutionStep(
+          title: 'Scaling 1/s^$n',
+          latex:
+              '\\mathcal{L}^{-1}\\{$k/s^$n\\}=$k\\,\\frac{t^{${n - 1}}}{${_fact(n - 1)}}',
+          explanation: 'Constant times the standard power row.',
+        ),
+      );
+      return '$k\\,\\frac{t^{${n - 1}}}{${_fact(n - 1)}}';
     }
     final ep = RegExp(r'^1/\(s\+(\d+\.?\d*)\)$').firstMatch(e);
     if (ep != null) {
@@ -268,31 +472,147 @@ extension PatternFallback on SolverEngine {
       );
       return 'e^{${a}t}';
     }
-    final sf = RegExp(r'^(\d+\.?\d*)/\(s\^2\+(\d+\.?\d*)\)$').firstMatch(e);
-    if (sf != null) {
-      final w = math.sqrt(double.tryParse(sf.group(2)!) ?? 1);
+    final eShift = RegExp(r'^1/\(s([+-])(\d+\.?\d*)\)\^(\d+)$').firstMatch(e);
+    if (eShift != null) {
+      final a = double.parse(eShift.group(2)!) * (eShift.group(1) == '+' ? -1 : 1);
+      final n = int.parse(eShift.group(3)!);
       steps.add(
         SolutionStep(
-          title: 'ω/(s²+ω²)',
-          latex: r'\mathcal{L}^{-1}\{\omega/(s^2+\omega^2)\}=\sin(\omega t)',
-          explanation: 'ω=${_fmt(w)}',
+          title: '1/(s-a)^$n',
+          latex: r'\mathcal{L}^{-1}\{1/(s-a)^n\}=\frac{e^{at}t^{n-1}}{(n-1)!}',
+          explanation: 'n=$n, a=${_fmt(a)} — s-shift on t^{n-1} row.',
         ),
       );
-      return '\\sin(${_fmt(w)}t)';
+      return '\\frac{e^{${_fmt(a)}t}t^{${n - 1}}}{${_fact(n - 1)}}';
     }
-    final cf = RegExp(r'^s/\(s\^2\+(\d+\.?\d*)\)$').firstMatch(e);
-    if (cf != null) {
-      final w = math.sqrt(double.tryParse(cf.group(1)!) ?? 1);
+    final ss = RegExp(
+            r'^(\d+\.?\d*)?/\(\(s([+-])(\d+\.?\d*)\)\^2\+(\d+\.?\d*)\)$')
+        .firstMatch(e);
+    if (ss != null) {
+      final k = double.parse(ss.group(1) ?? '1');
+      final a = double.parse(ss.group(3)!) * (ss.group(2) == '+' ? -1 : 1);
+      final w = math.sqrt(double.parse(ss.group(4)!));
+      steps.add(
+        SolutionStep(
+          title: 'k/((s-a)²+ω²)',
+          latex:
+              r'\mathcal{L}^{-1}\{\frac{k}{(s-a)^2+\omega^2}\}=\frac{k}{\omega}e^{at}\sin(\omega t)',
+          explanation: 'a=${_fmt(a)}, ω=${_fmt(w.toDouble())} — s-shifted sine.',
+        ),
+      );
+      return _fracQ(k, w) + 'e^{${_fmt(a)}t}\\sin(${_fmt(w.toDouble())}t)';
+    }
+    final css = RegExp(
+            r'^\(s([+-])(\d+\.?\d*)\)/\(\(s([+-])(\d+\.?\d*)\)\^2\+(\d+\.?\d*)\)$')
+        .firstMatch(e);
+    if (css != null &&
+        css.group(1) == css.group(3) &&
+        css.group(2) == css.group(4)) {
+      final a = double.parse(css.group(2)!) * (css.group(1) == '+' ? -1 : 1);
+      final w = math.sqrt(double.parse(css.group(5)!));
+      steps.add(
+        SolutionStep(
+          title: '(s-a)/((s-a)²+ω²)',
+          latex:
+              r'\mathcal{L}^{-1}\{\frac{s-a}{(s-a)^2+\omega^2}\}=e^{at}\cos(\omega t)',
+          explanation: 'a=${_fmt(a)}, ω=${_fmt(w.toDouble())} — s-shifted cosine.',
+        ),
+      );
+      return 'e^{${_fmt(a)}t}\\cos(${_fmt(w.toDouble())}t)';
+    }
+    final sf = RegExp(r'^s/\(s\^2\+(\d+\.?\d*)\)$').firstMatch(e);
+    if (sf != null) {
+      final w = math.sqrt(double.parse(sf.group(1)!));
       steps.add(
         SolutionStep(
           title: 's/(s²+ω²)',
           latex: r'\mathcal{L}^{-1}\{s/(s^2+\omega^2)\}=\cos(\omega t)',
-          explanation: 'ω=${_fmt(w)}',
+          explanation: 'ω=${_fmt(w.toDouble())}',
         ),
       );
-      return '\\cos(${_fmt(w)}t)';
+      return '\\cos(${_fmt(w.toDouble())}t)';
     }
-    return 'f(t)';
+    final csh = RegExp(r'^s/\(s\^2-(\d+\.?\d*)\)$').firstMatch(e);
+    if (csh != null) {
+      final w = math.sqrt(double.parse(csh.group(1)!));
+      steps.add(
+        SolutionStep(
+          title: 's/(s²-ω²)',
+          latex: r'\mathcal{L}^{-1}\{s/(s^2-\omega^2)\}=\cosh(\omega t)',
+          explanation: 'ω=${_fmt(w.toDouble())} — hyperbolic cosine row.',
+        ),
+      );
+      return '\\cosh(${_fmt(w.toDouble())}t)';
+    }
+    final kw = RegExp(r'^(\d+\.?\d*)/\(s\^2\+(\d+\.?\d*)\)$').firstMatch(e);
+    if (kw != null) {
+      final k = double.parse(kw.group(1)!);
+      final w = math.sqrt(double.parse(kw.group(2)!));
+      steps.add(
+        SolutionStep(
+          title: 'k/(s²+ω²)',
+          latex:
+              r'\mathcal{L}^{-1}\{k/(s^2+\omega^2)\}=\frac{k}{\omega}\sin(\omega t)',
+          explanation: 'k=${_fmt(k)}, ω=${_fmt(w.toDouble())}.',
+        ),
+      );
+      return _fracQ(k, w) + '\\sin(${_fmt(w.toDouble())}t)';
+    }
+    final kwsh = RegExp(r'^(\d+\.?\d*)/\(s\^2-(\d+\.?\d*)\)$').firstMatch(e);
+    if (kwsh != null) {
+      final k = double.parse(kwsh.group(1)!);
+      final w = math.sqrt(double.parse(kwsh.group(2)!));
+      steps.add(
+        SolutionStep(
+          title: 'k/(s²-ω²)',
+          latex:
+              r'\mathcal{L}^{-1}\{k/(s^2-\omega^2)\}=\frac{k}{\omega}\sinh(\omega t)',
+          explanation: 'k=${_fmt(k)}, ω=${_fmt(w.toDouble())} — hyperbolic row.',
+        ),
+      );
+      return _fracQ(k, w) + '\\sinh(${_fmt(w.toDouble())}t)';
+    }
+    final pf = RegExp(
+            r'^\(?(.+?)\)?/\(\(s([+-])(\d+\.?\d*)\)\*?\(s([+-])(\d+\.?\d*)\)\)$')
+        .firstMatch(e);
+    if (pf != null) {
+      final p1 = double.parse(pf.group(3)!) * (pf.group(2) == '+' ? -1 : 1);
+      final p2 = double.parse(pf.group(5)!) * (pf.group(4) == '+' ? -1 : 1);
+      if ((p1 - p2).abs() > 1e-12 && _linearValue(pf.group(1)!, p1).isFinite) {
+        final n1 = _linearValue(pf.group(1)!, p1);
+        final n2 = _linearValue(pf.group(1)!, p2);
+        final av = n1 / (p1 - p2);
+        final bv = n2 / (p2 - p1);
+        final avSign = av < 0 ? '' : '+';
+        steps.add(
+          SolutionStep(
+            title: 'Partial Fractions',
+            latex:
+                '${_tex(pf.group(1)!)} (s) = \\frac{${_fracQ(av, 1)}}{s${_signedNum(-p1)}} $avSign \\frac{${_fracQ(bv, 1)}}{s${_signedNum(-p2)}}',
+            explanation: 'Cover-up: A=N(p1)/(p1-p2), B=N(p2)/(p2-p1).',
+            rule: 'PFD',
+          ),
+        );
+        final avT = av < 0 ? '-${_fracRead(-av, 1)}' : _fracRead(av, 1);
+        final bvT = bv < 0 ? ' - ${_fracRead(-bv, 1)}' : ' + ${_fracRead(bv, 1)}';
+        return '${avT}e^{${_fmt(p1)}t}${bvT}e^{${_fmt(p2)}t}';
+      }
+    }
+    final scale = RegExp(r'^(\d+\.?\d*)\*?(.+)$').firstMatch(e);
+    if (scale != null) {
+      final k = double.parse(scale.group(1)!);
+      final core = _invLaplaceCore(scale.group(2)!, steps);
+      if (core.contains('unknown form')) return 'unknown form';
+      steps.add(
+        SolutionStep(
+          title: 'Scaling: ${_fmt(k)}',
+          latex: r'\mathcal{L}^{-1}\{kF(s)\}=k f(t)',
+          explanation: 'Pull the constant out.',
+        ),
+      );
+      return _fracQ(k, 1) + '\\cdot ' + core;
+    }
+    return 'unknown form';
   }
 
   // ═══ 3. FOURIER SERIES ═══════════════════════════════════════════════════════
@@ -654,8 +974,8 @@ extension PatternFallback on SolverEngine {
         lower.contains('/dy') ||
         lower.contains('d/dy') ||
         (lower.startsWith('pd(') && lower.contains(',y'));
-    final v = wrtY ? 'y' : 'x';
-    String expr = _ex(input, [
+    var v = wrtY ? 'y' : 'x';
+    var expr = _ex(input, [
       'partial(',
       'pd(',
       'd/dx[',
@@ -663,13 +983,27 @@ extension PatternFallback on SolverEngine {
       'd/dx',
       'd/dy',
     ]);
-    if (expr.contains(',')) expr = expr.split(',').first.trim();
+    // Optional second argument names the variable: partial(F(x,y,z), x).
+    final args = _splitArgs(expr);
+    if (args.length >= 2 &&
+        RegExp(r'^[a-z]$').hasMatch(args.last.trim().toLowerCase())) {
+      v = args.last.trim().toLowerCase();
+      expr = args.sublist(0, args.length - 1).join(',');
+    }
+    // Literal multi-arg function, e.g. F(x,y,z) — keep the human-readable name
+    // instead of lowering it to a generic f.
+    final call = _fnCall(expr);
+    final fnLabel = call != null ? '${call.name}' : '';
+    final fnSig = call != null
+        ? '${call.name}(${call.args.join(',')})'
+        : _tex(expr);
     final steps = <SolutionStep>[];
     steps.add(
       SolutionStep(
         title: 'Partial Derivative',
-        latex:
-            '\\frac{\\partial f}{\\partial $v}=\\lim_{h\\to0}\\frac{f(\\ldots,$v+h,\\ldots)-f(\\ldots)}{h}',
+        latex: call != null
+            ? '\\frac{\\partial $fnLabel}{\\partial $v}'
+            : '\\frac{\\partial f}{\\partial $v}=\\lim_{h\\to0}\\frac{f(\\ldots,$v+h,\\ldots)-f(\\ldots)}{h}',
         explanation:
             'Differentiate w.r.t. $v; treat all other variables as constants.',
       ),
@@ -677,7 +1011,7 @@ extension PatternFallback on SolverEngine {
     steps.add(
       SolutionStep(
         title: 'Apply Rules',
-        latex: '\\frac{\\partial}{\\partial $v}\\left[${_tex(expr)}\\right]',
+        latex: '\\frac{\\partial}{\\partial $v}\\left[$fnSig\\right]',
         explanation:
             'Same power/product/chain rules — non-$v variables are just numbers.',
         rule: 'Partial Diff',
@@ -715,8 +1049,9 @@ extension PatternFallback on SolverEngine {
       input: input,
       domain: MathDomain.calculus,
       operation: '∂/∂$v',
-      resultLatex:
-          '\\frac{\\partial}{\\partial $v}\\left[${_tex(expr)}\\right]',
+      resultLatex: call != null
+          ? '\\frac{\\partial $fnLabel}{\\partial $v}'
+          : '\\frac{\\partial}{\\partial $v}\\left[${_tex(expr)}\\right]',
       resultReadable: '∂/∂$v[$expr]',
       steps: steps,
       tip:
@@ -729,17 +1064,31 @@ extension PatternFallback on SolverEngine {
   Solution _multipleIntegral(String input) {
     final lower = input.toLowerCase();
     final triple = lower.startsWith('tripleint(');
+    final inner = _ex(input, ['dblint(', 'tripleint(', 'doubleint(']);
+    final call = _fnCall(inner);
+    final fnSig = call != null
+        ? '${call.name}(${call.args.join(',')})'
+        : _tex(inner.split(',').first.trim());
     final steps = <SolutionStep>[];
     steps.add(
       SolutionStep(
         title: triple ? 'Triple Integral' : 'Double Integral',
         latex: triple
-            ? r'\iiint_V f\,dV=\int\int\int f\,dx\,dy\,dz'
-            : r'\iint_D f(x,y)\,dA=\int_{y_1}^{y_2}\int_{x_1}^{x_2}f\,dx\,dy',
+            ? '\\iiint_V $fnSig\\,dV=\\int\\int\\int $fnSig\\,dx\\,dy\\,dz'
+            : '\\iint_D $fnSig\\,dA=\\int_{y_1}^{y_2}\\int_{x_1}^{x_2} $fnSig\\,dx\\,dy',
         explanation:
             'Integrate over ${triple ? "3D volume" : "2D region"}. Apply Fubini: integrate any order.',
       ),
     );
+    if (call != null && call.args.length >= (triple ? 3 : 2)) {
+      steps.add(SolutionStep(
+        title: 'Multivariable Integrand',
+        latex: '$fnSig',
+        explanation: call.args.length >= 3
+            ? 'Function of ${call.args.join(', ')} — integrate one variable at a time; treat the rest as constants.'
+            : 'Function of ${call.args.join(', ')} — integrate one variable at a time.',
+      ));
+    }
     steps.add(
       const SolutionStep(
         title: "Fubini's Theorem",
@@ -781,8 +1130,12 @@ extension PatternFallback on SolverEngine {
       input: input,
       domain: MathDomain.calculus,
       operation: triple ? 'Triple Integral' : 'Double Integral',
-      resultLatex: triple ? r'\iiint_V f\,dV' : r'\iint_D f\,dA',
-      resultReadable: triple ? '∭_V f dV' : '∬_D f dA',
+      resultLatex: triple
+          ? '\\iiint_V $fnSig\\,dV'
+          : '\\iint_D $fnSig\\,dA',
+      resultReadable: triple
+          ? '∭_V $fnSig dV'
+          : '∬_D $fnSig dA',
       steps: steps,
       tip: 'For circular/spherical regions: always try polar/spherical first.',
     );
@@ -981,6 +1334,333 @@ extension PatternFallback on SolverEngine {
       tip:
           'Always check conservativity first – it makes line integrals trivial.',
     );
+  }
+
+  // ═══ 11. EQUATION SOLVING ═════════════════════════════════════════════════════
+
+  Solution _solveEquation(String input) {
+    final inner = _ex(input, const ['solve(']);
+    final parts = _splitArgs(inner);
+    final eq = parts.isNotEmpty ? parts.first.trim() : '';
+    const v = 'x';
+    if (eq.isEmpty) return Solution.unknown(input);
+
+    // Normalise either '0 = expr' or half-equation 'expr' (shorthand for =0).
+    final eqM = RegExp(r'^\s*(.*?)\s*=\s*(.*?)\s*$').firstMatch(eq);
+    final lhsR = eqM != null ? eqM.group(1)!.trim() : eq.trim();
+    final rhsR = eqM != null ? eqM.group(2)!.trim() : null;
+
+    final rhsTerms = rhsR != null ? _signedParts(rhsR) : <String>[];
+    final sb = StringBuffer(lhsR.replaceAll(' ', ''));
+    for (final t in rhsTerms) {
+      final nt = t.startsWith('-') ? '+${t.substring(1)}' : '-$t';
+      sb.write(nt);
+    }
+    final poly = sb.toString();
+
+    final coeffs = _polyCoeffs(poly, v);
+    if (coeffs != null) {
+      return _solvePolynomial(input, v, lhsR, rhsR, coeffs.$1, coeffs.$2, coeffs.$3);
+    }
+
+    final factored = _factoredRoots(lhsR, v);
+    if (factored != null) {
+      final r1 = _fracRead(factored.$1, 1);
+      final r2 = _fracRead(factored.$2, 1);
+      final steps = <SolutionStep>[
+        const SolutionStep(
+          title: 'Factored Form',
+          latex: r'(x-r_1)(x-r_2)=0',
+          explanation:
+              'If a product is zero, at least one factor is zero (zero-product rule).',
+          rule: 'Zero-Product',
+        ),
+        SolutionStep(
+          title: 'Set Each Factor to Zero',
+          latex: '$v=$r1 \\\\ $v=$r2',
+          explanation: 'Read the roots straight from the factored form.',
+          rule: 'Zero-Product',
+        ),
+        SolutionStep(
+          title: 'Check',
+          latex: '$v=$r1, $v=$r2 \\Rightarrow\\text{ both give 0 on the LHS}',
+          explanation: 'Substitute both values back: each satisfies LHS=0.',
+        ),
+      ];
+      return _solveDone(input, '$v=$r1, $v=$r2', '$v = $r1, $v = $r2', steps);
+    }
+
+    return Solution.unknown(input);
+  }
+
+  // Strip a single leading '+'/'-' sign.
+  String _stripSign(String e) {
+    var s = e.trim();
+    if (s.startsWith('+')) s = s.substring(1);
+    if (s.startsWith('-')) s = s.substring(1);
+    return s;
+  }
+
+  // Split an expression into top-level signed summands (depth-aware).
+  List<String> _signedParts(String s) {
+    final out = <String>[];
+    final buf = StringBuffer();
+    var depth = 0;
+    for (final ch in s.split('')) {
+      if (ch == '(' || ch == '[') depth++;
+      if (ch == ')' || ch == ']') depth--;
+      final prev = buf.isNotEmpty ? buf.toString()[buf.length - 1] : '';
+      final isSep = (ch == '+' || ch == '-') &&
+          depth == 0 &&
+          buf.isNotEmpty &&
+          prev != '*' &&
+          prev != '^' &&
+          prev != '(' &&
+          prev != 'e';
+      if (isSep) {
+        out.add(buf.toString().trim());
+        buf.clear();
+      }
+      buf.write(ch);
+    }
+    final last = buf.toString().trim();
+    if (last.isNotEmpty) out.add(last);
+    return out;
+  }
+
+  double _numOrOne(String? s) {
+    final t = s ?? '';
+    if (t.isEmpty) return 1;
+    return double.parse(t);
+  }
+
+  String _signedNum(num v) =>
+      v < 0 ? '-${_fmt(v.toDouble())}' : '+${_fmt(v.toDouble())}';
+
+  // Rational / fixed-decimal LaTeX display for b/(2a), A, B coefficients.
+  String _fracQ(num n, num d) {
+    if (d == 0) return '?';
+    final q = n / d;
+    if (q == q.roundToDouble()) return _fmt(q);
+    if (n == n.roundToDouble() && d == d.roundToDouble()) {
+      var num_ = n.round().toInt();
+      var den = d.round().toInt();
+      if (den < 0) {
+        num_ = -num_;
+        den = -den;
+      }
+      final g = _gcd(num_.abs(), den.abs());
+      num_ ~/= g;
+      den ~/= g;
+      if (den == 1) return '$num_';
+      return '\\frac{$num_}{$den}';
+    }
+    return _fmt(q);
+  }
+
+  // Plain-text rational display: '-1/3' or '2'.
+  String _fracRead(num n, num d) {
+    var tex = _fracQ(n, d);
+    return tex
+        .replaceAll('\\frac{', '')
+        .replaceAll('}{', '/')
+        .replaceAll('}', '');
+  }
+
+  // Extract (a, b, c) from a polynomial string, or null if not polynomial.
+  (num, num, num)? _polyCoeffs(String s, String v) {
+    num a = 0, b = 0, c = 0;
+    outer:
+    for (final raw in _signedParts(s)) {
+      final t = raw.trim();
+      for (final m in RegExp('^([+-]?)(\\d+(?:\\.\\d+)?)?\\*?$v\\^\\{?\\d+\\}?').allMatches(t)) {
+        a += (m.group(1) == '-' ? -1.0 : 1.0) *
+            (m.group(2) == null ? 1.0 : double.parse(m.group(2)!));
+        continue outer;
+      }
+      for (final m in RegExp('^([+-]?)(\\d+(?:\\.\\d+)?)?\\*?$v\$').allMatches(t)) {
+        b += (m.group(1) == '-' ? -1.0 : 1.0) *
+            (m.group(2) == null ? 1.0 : double.parse(m.group(2)!));
+        continue outer;
+      }
+      for (final m in RegExp(r'^([+-]?)(\d+(?:\.\d+)?)$').allMatches(t)) {
+        c += (m.group(1) == '-' ? -1.0 : 1.0) * double.parse(m.group(2)!);
+        continue outer;
+      }
+      return null;
+    }
+    return (a, b, c);
+  }
+
+  double _linearValue(String numStr, double s_) {
+    final q = numStr.replaceAll(' ', '');
+    final c = RegExp(r'^\(?(\d+\.?\d*)\)?$').firstMatch(q);
+    if (c != null) return double.parse(c.group(1)!);
+    if (RegExp(r'^s$').hasMatch(q)) return s_;
+    final lin = RegExp(r'^\(?(\d+\.?\d*)?\*?s([+-])(\d+\.?\d*)\)?$').firstMatch(q);
+    if (lin != null) {
+      final p = lin.group(1) == null ? 1.0 : double.parse(lin.group(1)!);
+      final qn = double.parse(lin.group(3)!);
+      final sign = lin.group(2) == '+' ? 1.0 : -1.0;
+      return p * s_ + sign * qn;
+    }
+    return double.nan;
+  }
+
+  (double, double)? _factoredRoots(String lhs, String v) {
+    final q = lhs.replaceAll(' ', '');
+    final m = RegExp('^\\($v([+-])([\\d.]+)\\)\\*?\\($v([+-])([\\d.]+)\\)\$')
+        .firstMatch(q);
+    if (m == null) return null;
+    final r1 = double.parse(m.group(2)!) * (m.group(1) == '-' ? 1 : -1);
+    final r2 = double.parse(m.group(4)!) * (m.group(3) == '-' ? 1 : -1);
+    return (r1, r2);
+  }
+
+  Solution _solveDone(String input, String tex, String readable,
+      List<SolutionStep> steps) {
+    return Solution(
+      input: input,
+      domain: MathDomain.general,
+      operation: 'Solve',
+      resultLatex: tex,
+      resultReadable: readable,
+      steps: steps,
+      tip: 'Solve by: factor → isolate → check. Always substitute roots back.',
+    );
+  }
+
+  Solution _solvePolynomial(
+      String input, String v, String lhsR, String? rhsR, num a, num b, num c) {
+    final steps = <SolutionStep>[];
+    // Bring to standard form.
+    steps.add(SolutionStep(
+      title: 'Set to Zero',
+      latex: '${lhsR.replaceAll('*', '')} = ${rhsR ?? '0'}',
+      explanation: 'Bring every term to one side so the equation reads $v²+…=0.',
+    ));
+    if (a == 0 && b == 0) {
+      if (c == 0) {
+        steps.add(SolutionStep(
+          title: 'Identity',
+          latex: r'0=0 \quad \forall x',
+          explanation: 'Every value of $v satisfies the equation.',
+        ));
+        return _solveDone(input, r'x \in \mathbb{R}', 'All real x', steps);
+      }
+      steps.add(SolutionStep(
+        title: 'Contradiction',
+        latex: r'k=0,\ k\neq 0',
+        explanation: 'No value of $v can make a false statement true.',
+      ));
+      return _solveDone(input, r'\varnothing', 'No solution', steps);
+    }
+    if (a == 0) {
+      final read = _fracRead(-c, b);
+      steps.add(SolutionStep(
+        title: 'Isolate $v',
+        latex: '$v = \\frac{-${_fmt(c.toDouble())}}{${_fmt(b.toDouble())}} = ${_fracQ(-c, b)}',
+        explanation: 'Divide both sides by the coefficient of $v.',
+        rule: 'Isolate',
+      ));
+      steps.add(SolutionStep(
+        title: 'Check',
+        latex: '$b($read) + ${_fmt(c.toDouble())} = 0',
+        explanation: 'Substituting back gives 0 on the LHS.',
+      ));
+      return _solveDone(input, '$v=${_fracQ(-c, b)}', '$v = $read', steps);
+    }
+    // Quadratic.
+    final disc = b * b - 4 * a * c;
+    steps.add(SolutionStep(
+      title: 'Identify Coefficients',
+      latex:
+          'a=${_fmt(a.toDouble())}, b=${_fmt(b.toDouble())}, c=${_fmt(c.toDouble())}',
+      explanation:
+          'Match the equation against a$v² + b$v + c = 0.',
+      rule: 'Quadratic Formula',
+    ));
+    steps.add(SolutionStep(
+      title: 'Discriminant',
+      latex: '\\Delta = b^2 - 4ac = ${_fmt(disc.toDouble())}',
+      explanation: disc < 0
+          ? 'Δ < 0: two complex conjugate roots.'
+          : 'Δ ≥ 0: real roots. Perfect square ⇒ factorable.',
+      rule: 'Discriminant',
+    ));
+    if (disc < 0) {
+      final d2 = -disc;
+      final re = _fracQ(-b, 2 * a);
+      final reRead = _fracRead(-b, 2 * a);
+      steps.add(SolutionStep(
+        title: 'Complex Roots',
+        latex:
+            '$v = \\frac{${_fmt((-b).toDouble())} \\pm i\\sqrt{${_fmt(d2.toDouble())}}}{${_fmt((2 * a).toDouble())}} = $re \\pm i\\frac{\\sqrt{${_fmt(d2.toDouble())}}}{${_fmt((2 * a).toDouble())}}',
+        explanation: 'Δ < 0 means the parabola never crosses the $v-axis.',
+        rule: 'Quadratic Formula',
+      ));
+      return _solveDone(
+        input,
+        '$v = $re \\pm i\\frac{\\sqrt{${_fmt(d2.toDouble())}}}{${_fmt((2 * a).toDouble())}}',
+        '$v = $reRead ± i√(${_fmt(d2.toDouble())})/(${_fmt((2 * a).toDouble())})',
+        steps,
+      );
+    }
+    final d = math.sqrt(disc);
+    final exact = disc == disc.roundToDouble() && d == d.roundToDouble();
+    String tex1, tex2;
+    if (exact) {
+      final t1 = _fracQ(-b - d, 2 * a);
+      final t2 = _fracQ(-b + d, 2 * a);
+      tex1 = t1;
+      tex2 = t2;
+      if (a == 1) {
+        steps.add(SolutionStep(
+          title: 'Factor',
+          latex: '($v - ($t1))($v - ($t2)) = 0',
+          explanation: 'Δ is a perfect square, so the quadratic factors cleanly.',
+          rule: 'Factor',
+        ));
+      }
+    } else {
+      tex1 =
+          '\\frac{${_fmt((-b).toDouble())}-\\sqrt{${_fmt(disc.toDouble())}}}{${_fmt((2 * a).toDouble())}}';
+      tex2 =
+          '\\frac{${_fmt((-b).toDouble())}+\\sqrt{${_fmt(disc.toDouble())}}}{${_fmt((2 * a).toDouble())}}';
+    }
+    final loTex = _fracQ(-b - d, 2 * a);
+    final hiTex = _fracQ(-b + d, 2 * a);
+    final loRead = _fracRead(-b - d, 2 * a);
+    final hiRead = _fracRead(-b + d, 2 * a);
+    steps.add(SolutionStep(
+      title: 'Quadratic Formula',
+      latex: '$v = \\frac{-b\\pm\\sqrt{\\Delta}}{2a} \\Rightarrow $tex1, $tex2',
+      explanation: 'Δ=${_fmt(disc.toDouble())}. '
+          '${exact ? '√Δ=${_fmt(d.toDouble())} is exact.' : '√Δ is irrational — keep the surd form.'}',
+      rule: 'Quadratic Formula',
+    ));
+    steps.add(SolutionStep(
+      title: 'Check',
+      latex: 'plug $v=$loTex and $v=$hiTex: LHS = 0 in both cases',
+      explanation: 'Verify each root against the original equation.',
+    ));
+    return _solveDone(
+      input,
+      '$v=$loTex, $v=$hiTex',
+      '$v = $loRead, $v = $hiRead',
+      steps,
+    );
+  }
+
+  // ═══ LITERAL MULTI-ARG FUNCTIONS (M4) ════════════════════════════════════════
+
+  ({String name, List<String> args})? _fnCall(String expr) {
+    final m = RegExp(r'^([A-Za-z][A-Za-z0-9]*)\s*\((.+)\)$')
+        .firstMatch(expr.trim());
+    if (m == null) return null;
+    final args = _splitArgs(m.group(2)!);
+    if (args.isEmpty) return null;
+    return (name: m.group(1)!, args: args);
   }
 
   // ═══ EXISTING PATTERN SOLVERS ═════════════════════════════════════════════════
@@ -2606,6 +3286,16 @@ extension PatternFallback on SolverEngine {
         ),
       );
     }
+    final innerEx = _ex(input, [
+      'gradient(',
+      'grad(',
+      'div(',
+      'curl(',
+      'laplacian(',
+      'dot(',
+      'cross(',
+    ]);
+    final call = _fnCall(innerEx);
     steps.add(
       const SolutionStep(
         title: 'Big Three',
@@ -2614,6 +3304,25 @@ extension PatternFallback on SolverEngine {
             "Green's (2D), Stokes' (3D), Divergence: all special cases of Generalized Stokes.",
       ),
     );
+    if (call != null) {
+      final fn = '${call.name}(${call.args.join(',')})';
+      if (op == 'Gradient') {
+        r = '\\nabla $fn';
+      } else if (op == 'Divergence') {
+        r = '\\nabla\\cdot\\mathbf{F}(${call.name})';
+      } else if (op == 'Curl') {
+        r = '\\nabla\\times\\mathbf{F}(${call.name})';
+      }
+      steps.insert(
+        0,
+        SolutionStep(
+          title: 'Literal Field',
+          latex: fn,
+          explanation:
+              'Substitute the actual function into the definition above.',
+        ),
+      );
+    }
     return Solution(
       input: input,
       domain: MathDomain.calculus,
