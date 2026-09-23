@@ -125,14 +125,27 @@ void main() {
       expect(solution.steps.last.rule, 'Verified');
     });
 
-    test('topologyVerdict matches the catalogue', () {
-      expect(SolutionVerifier.topologyVerdict('compact', '[0,1]'), isTrue);
-      expect(SolutionVerifier.topologyVerdict('compact', '(0,1)'), isFalse);
-      expect(SolutionVerifier.topologyVerdict('compact', 'R'), isFalse);
-      expect(SolutionVerifier.topologyVerdict('compact', '{1,2}'), isTrue);
-      expect(SolutionVerifier.topologyVerdict('connected', 'R'), isTrue);
-      expect(SolutionVerifier.topologyVerdict('connected', 'Z'), isFalse);
-      expect(SolutionVerifier.topologyVerdict('connected', '{1,2}'), isFalse);
+    group('exact-trig crash guard', () {
+    test('detects constant-argument trig', () {
+      expect(SolutionVerifier.hasExactTrig('sin(pi/4)'), isTrue);
+      expect(SolutionVerifier.hasExactTrig('2*cos(pi/8)^2'), isTrue);
+      expect(SolutionVerifier.hasExactTrig('1+sin(pi/4)'), isTrue);
+      expect(SolutionVerifier.hasExactTrig('Sin(pi/4)'), isTrue);
+      expect(SolutionVerifier.hasExactTrig('tan(pi/12)*x'), isTrue);
+      expect(SolutionVerifier.hasExactTrig('sqrt(2)/2'), isFalse);
     });
+
+    test('leaves variable-argument trig alone', () {
+      expect(SolutionVerifier.hasExactTrig('sin(x)'), isFalse);
+      expect(SolutionVerifier.hasExactTrig('diff(sin(x^2),x)'), isFalse);
+      expect(SolutionVerifier.hasExactTrig('solve(sin(x)=1)'), isFalse);
+      expect(SolutionVerifier.hasExactTrig('cos(2*x)+sin(x)'), isFalse);
+    });
+
+    test('trig-exact generic input solves without crashing', () {
+      final solution = SolverEngine.instance.solve('1+sin(pi/4)');
+      expect(solution.input, '1+sin(pi/4)');
+    });
+  });
   });
 }

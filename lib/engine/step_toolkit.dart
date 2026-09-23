@@ -485,7 +485,9 @@ class SolutionVerifier {
 
   Verification _factorize(String input, String result) {
     final f = _inner(input, const ['factorize(', 'factor(', 'prime_factors(']);
-    if (_isZero(_g('normal(expand(($result)) - ($f))'))) {
+    if (!_trigExact(f) &&
+        !_trigExact(result) &&
+        _isZero(_g('normal(expand(($result)) - ($f))'))) {
       return _verified(
         'expand the factors back',
         'Multiplying the reported factors back gives the original expression.',
@@ -536,7 +538,9 @@ class SolutionVerifier {
 
   Verification _laplace(String input, String result) {
     final f = _inner(input, const ['laplace(']);
-    if (_isZero(_g('normal(ilaplace(($result),s,t) - ($f))'))) {
+    if (!_trigExact(f) &&
+        !_trigExact(result) &&
+        _isZero(_g('normal(ilaplace(($result),s,t) - ($f))'))) {
       return _verified(
         'inverse-transform it back',
         'Inverting the reported transform recovers the original function.',
@@ -550,7 +554,9 @@ class SolutionVerifier {
 
   Verification _inverseLaplace(String input, String result) {
     final f = _inner(input, const ['invlaplace(', 'ilaplace(']);
-    if (_isZero(_g('normal(laplace(($result),t,s) - ($f))'))) {
+    if (!_trigExact(f) &&
+        !_trigExact(result) &&
+        _isZero(_g('normal(laplace(($result),t,s) - ($f))'))) {
       return _verified(
         'transform it back',
         'Transforming the reported function recovers the original transform.',
@@ -599,12 +605,14 @@ class SolutionVerifier {
       'evalf(',
       'factorize(',
     ]);
-    final exact = _g('normal(($f) - ($result))');
-    if (_isZero(exact)) {
-      return _verified(
-        'exact identity',
-        'The simplified difference between the input and the result is zero.',
-      );
+    if (!_trigExact(f) && !_trigExact(result)) {
+      final exact = _g('normal(($f) - ($result))');
+      if (_isZero(exact)) {
+        return _verified(
+          'exact identity',
+          'The simplified difference between the input and the result is zero.',
+        );
+      }
     }
     final residual = _number(_g('evalf(abs(($f) - ($result)))'));
     if (residual == null) {
@@ -658,7 +666,7 @@ class SolutionVerifier {
                   RegExp(r'(?<![A-Za-z0-9_])y(?![A-Za-z0-9_])'),
                   s,
                 )} - ($rhs)';
-    if (_isZero(_g('normal(($rebuilt))'))) {
+    if (!_trigExact(rebuilt) && _isZero(_g('normal(($rebuilt))'))) {
       return _verified(
         'plug the solution back in',
         'Differentiating the reported solution and substituting it back '
@@ -1301,6 +1309,54 @@ class SolutionVerifier {
   /// Documented for test access (see test/step_toolkit_test.dart).
   static bool? topologyVerdict(String op, String space) =>
       op == 'compact' ? _spaceCompact(space) : _spaceConnected(space);
+
+  /// True when [s] holds a trig function applied to a constant argument
+  /// (e.g. sin(pi/4), 2*cos(pi/8)^2).  Giac's normal()/simplify() enters an
+  /// infinite recursion on these exact forms and SIGSEGV's the worker thread
+  /// (the "sin(pi/4)" A6 crash), so every Giac boundary must avoid
+  /// normal()-style rewriting once this returns true.  Arguments that contain
+  /// a genuine variable (sin(x), sin(x^2)) are safe and return false.
+  static bool hasExactTrig(String s) => _trigExact(s);
+
+  static bool _trigExact(String s) {
+    final re = RegExp(
+      r'(?:asin|acos|atan|sinh|cosh|tanh|sin|cos|tan|csc|sec|cot)\s*\(',
+      caseSensitive: false,
+    );
+    var idx = 0;
+    while (idx < s.length) {
+      final m = re.firstMatch(s.substring(idx));
+      if (m == null) return false;
+      final start = idx + m.end;
+      var depth = 1;
+      var i = start;
+      var end = -1;
+      while (i < s.length && depth > 0) {
+        final c = s[i];
+        if (c == '(' || c == '[' || c == '{') {
+          depth++;
+        } else if (c == ')' || c == ']' || c == '}') {
+          depth--;
+          if (depth == 0) end = i;
+        }
+        i++;
+      }
+      if (end < 0) return false;
+      var letters = s.substring(start, end).replaceAll(RegExp(r'[^A-Za-z]'), '');
+      letters = letters
+          .replaceAll('pi', '')
+          .replaceAll('Pi', '')
+          .replaceAll('PI', '')
+          .replaceAll('e', '')
+          .replaceAll('E', '')
+          .replaceAll('inf', '')
+          .replaceAll('Inf', '')
+          .replaceAll('infinity', '');
+      if (letters.isEmpty) return true;
+      idx = end;
+    }
+    return false;
+  }
 
   static Verification _verified(String check, String detail) =>
       Verification(VerificationStatus.verified, check, detail);

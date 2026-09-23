@@ -201,6 +201,7 @@ class SolverEngine {
         operation = 'Factorize';
         domain = MathDomain.numberTheory;
       } else if (lower.startsWith('solve(')) {
+        if (SolutionVerifier.hasExactTrig(input)) return null;
         giacCmd = input; // pass through verbatim
         operation = 'Solve';
         domain = MathDomain.general;
@@ -246,8 +247,13 @@ class SolverEngine {
         // solve() fall through to the pattern path.
         return null;
       } else {
-        // Generic: try to evaluate / simplify
-        giacCmd = 'normal($input)';
+        // Generic: try to evaluate / simplify.  Giac's normal()/simplify()
+        // infinite-recurses on exact trig constants (sin(pi/4), …) and
+        // SIGSEGV's the worker, so any input carrying one is evaluated
+        // numerically instead (evalf never touches the symbolic path).
+        giacCmd = SolutionVerifier.hasExactTrig(input)
+            ? 'evalf($input)'
+            : 'normal($input)';
         operation = 'Evaluate';
         domain = MathDomain.general;
       }
