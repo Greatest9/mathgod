@@ -76,9 +76,11 @@ class SolverEngine {
       );
     }
 
-    // No CAS on this platform.  Keep the pattern steps, and still close the
-    // solution with an honest statement about verification rather than
-    // pretending the answer was checked.
+    // No CAS or the CAS could not handle this input: keep the pattern steps,
+    // and still close the solution with an honest statement about
+    // verification.  When the engine exists, the check runs against the
+    // pattern result (unit-circle trig values, statistics, number theory);
+    // only without the engine is "no independent check" unavoidable.
     return Solution(
       input: patternSolution.input,
       domain: patternSolution.domain,
@@ -92,7 +94,7 @@ class SolverEngine {
             operation: patternSolution.operation,
             input: input,
             result: patternSolution.resultReadable,
-            giacAvailable: false,
+            giacAvailable: _useGiac,
           ),
         ),
       ],
@@ -217,12 +219,24 @@ class SolverEngine {
             : 'Taylor Series';
         domain = MathDomain.realAnalysis;
       } else if (_isODE(lower)) {
-        giacCmd = 'desolve($input,t,y)';
+        final innerEq =
+            _ex(input, ['ode(', 'odesolve(', 'desolve(']).replaceAll(
+          RegExp(r'\s*\)$'),
+          '',
+        );
+        giacCmd = 'desolve($innerEq,y)';
         operation = 'ODE';
         domain = MathDomain.differentialEquations;
       } else if (_isVector(lower)) {
-        giacCmd =
-            input; // gradient/div/curl pass through — Giac understands them
+        // Giac knows grad/divergence/curl/laplacian but not the friendlier
+        // spellings, so translate; the rest pass through verbatim.
+        if (lower.startsWith('gradient(')) {
+          giacCmd = 'grad(${_ex(input, ['gradient('])})';
+        } else if (lower.startsWith('div(')) {
+          giacCmd = 'divergence(${_ex(input, ['div('])})';
+        } else {
+          giacCmd = input;
+        }
         operation = 'Vector Calculus';
         domain = MathDomain.calculus;
       } else if (_isTrig(lower)) {

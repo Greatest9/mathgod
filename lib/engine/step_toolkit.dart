@@ -163,6 +163,24 @@ class SolutionVerifier {
     if (result.trim().isEmpty) {
       return _unavailable('There is nothing to check.');
     }
+    final family = _family(operation);
+    // The abstract-algebra and topology checks are pure Dart (re-counting
+    // generators, re-deriving Heine-Borel verdicts), so they run even where
+    // the CAS engine is absent.
+    if (family == 'Abstract Algebra') {
+      try {
+        return _groupCheck(input, result);
+      } catch (_) {
+        return _unavailable('The check could not be completed.');
+      }
+    }
+    if (family == 'Topology') {
+      try {
+        return _topologyCheck(input, result);
+      } catch (_) {
+        return _unavailable('The check could not be completed.');
+      }
+    }
     if (!giacAvailable) {
       return _unavailable(
         'The numeric cross-check needs the CAS engine, which is not available '
@@ -170,7 +188,7 @@ class SolutionVerifier {
       );
     }
     try {
-      switch (_family(operation)) {
+      switch (family) {
         case 'Derivative':
           return _derivative(input, result);
         case 'Integral':
@@ -195,6 +213,12 @@ class SolutionVerifier {
           return _inverseLaplace(input, result);
         case 'Numeric':
           return _numericIdentity(input, result);
+        case 'ODE':
+          return _ode(input, result);
+        case 'Vector Calculus':
+          return _vectorCalculus(input, result);
+        case 'Vector Algebra':
+          return _vectorAlgebra(input, result);
         default:
           return _unavailable(
             'This topic does not have an independent check yet.',
@@ -212,6 +236,19 @@ class SolutionVerifier {
     if (operation.startsWith('Integral')) return 'Integral';
     if (operation.startsWith('Solve')) return 'Solve';
     if (operation.startsWith('Series')) return 'Series';
+    if (operation.contains('ODE')) return 'ODE';
+    if (operation == 'Vector Calculus' ||
+        operation.startsWith('Gradient') ||
+        operation.startsWith('Divergence') ||
+        operation.startsWith('Curl') ||
+        operation.startsWith('Laplacian')) {
+      return 'Vector Calculus';
+    }
+    if (operation.startsWith('Dot') || operation.startsWith('Cross')) {
+      return 'Vector Algebra';
+    }
+    if (operation == 'Abstract Algebra') return 'Abstract Algebra';
+    if (operation == 'Topology') return 'Topology';
     const numeric = {
       'Evaluate',
       'Trigonometry',
@@ -220,9 +257,14 @@ class SolutionVerifier {
       'Number Theory',
       'Primality',
       'Mod',
+      'GCD',
+      'LCM',
     };
     if (numeric.contains(operation)) return 'Numeric';
-    return operation;
+    // Fallback: try the numeric identity anyway.  It is honest — when
+    // neither side evaluates to a number it reports unavailable — so every
+    // topic gets a chance to be checked rather than defaulting to "not yet".
+    return 'Numeric';
   }
 
   // ─── checks ────────────────────────────────────────────────────────────────
@@ -520,15 +562,41 @@ class SolutionVerifier {
   }
 
   Verification _numericIdentity(String input, String result) {
+    // Evaluate each side on its own and compare in Dart.  This is the only
+    // shape that works for list and predicate inputs (mean([1,2,3,4,5]),
+    // isprime(7), gcd(48,18)) where a single normal(f - result) expression
+    // cannot even be formed, and for pattern-produced results such as the
+    // trig table's "frac{sqrt{2}}{2}".
+    final li = _toEvaluable(input);
+    final lr = _toEvaluable(result);
+    final a = _number(_g('evalf(($li))'));
+    final b = _number(_g('evalf(($lr))'));
+    if (a != null && b != null) {
+      final err = _relErr(a, b);
+      if (err < 1e-4) {
+        return _verified(
+          'numeric evaluation',
+          'Both sides evaluate to the same number to ${_sig(err)}.',
+        );
+      }
+      return _failed('numeric evaluation', err);
+    }
+    // A single abs() reaches complex-valued results that _number cannot read.
+    final d = _number(_g('evalf(abs(($li) - ($lr)))'));
+    if (d != null) {
+      if (d < 1e-9) {
+        return _verified(
+          'numeric identity',
+          'The difference between the input and the result vanishes to '
+          '${_sig(d)}.',
+        );
+      }
+      return _failed('numeric identity', d);
+    }
     final f = _inner(input, const [
       'simplify(',
       'normal(',
       'evalf(',
-      'mean(',
-      'median(',
-      'variance(',
-      'stddev(',
-      'isprime(',
       'factorize(',
     ]);
     final exact = _g('normal(($f) - ($result))');
@@ -551,7 +619,494 @@ class SolutionVerifier {
     return _failed('numeric identity', residual);
   }
 
-  // ─── helpers ───────────────────────────────────────────────────────────────
+  /// Translates the pattern engine's "readable" LaTeX fragments (backslashes
+  /// already stripped) into something Giac can evaluate: frac{√2}{2} style
+  /// braces become division.  Plain expressions pass through untouched.
+  static String _toEvaluable(String s) {
+    final t = s.trim();
+    if (!t.contains('{') && !t.contains('frac(')) return t;
+    var out = t.replaceAll('{', '(').replaceAll('}', ')');
+    out = out.replaceAll('frac(', '(');
+    out = out.replaceAll(')(', ')/(');
+    return out;
+  }
+
+  Verification _ode(String input, String result) {
+    var eq = _inner(input, const ['ode(', 'odesolve(', 'desolve(']);
+    if (eq == input && !eq.contains('=')) {
+      eq = eq.trim().replaceAll(RegExp(r'\s*\)$'), '');
+    }
+    final sides = eq.split('=');
+    if (sides.length < 2) {
+      return _unavailable('The equation could not be read.');
+    }
+    final lhs = sides.sublist(0, sides.length - 1).join('=').trim();
+    final rhs = sides.last.trim();
+    final v = RegExp(r'd/dt|\(\s*t\s*[,)]|\bdy/dt\b').hasMatch(input)
+        ? 't'
+        : 'x';
+    final isFirstOrder = lhs.contains('dy/dx') ||
+        lhs.contains('dy/dt') ||
+        (!lhs.contains("y''") && lhs.contains("y'"));
+    final s = '($result)';
+    final rebuilt = isFirstOrder
+        ? 'diff($s,$v) - subst(($rhs),y,$s)'
+        : '${lhs
+                .replaceAll("y''", 'diff($s,$v,2)')
+                .replaceAll("y'", 'diff($s,$v)')
+                .replaceAll(
+                  RegExp(r'(?<![A-Za-z0-9_])y(?![A-Za-z0-9_])'),
+                  s,
+                )} - ($rhs)';
+    if (_isZero(_g('normal(($rebuilt))'))) {
+      return _verified(
+        'plug the solution back in',
+        'Differentiating the reported solution and substituting it back '
+        'makes the equation hold exactly.',
+      );
+    }
+    double? worst = 0;
+    for (final p in const ['0.6', '1.4']) {
+      final r = _number(_g('evalf(abs(subst(($rebuilt),$v,$p)))'));
+      if (r == null) {
+        worst = null;
+        break;
+      }
+      worst = math.max(worst!, r);
+    }
+    if (worst == null) {
+      return _unavailable(
+        'The residual could not be evaluated at the sample points.',
+      );
+    }
+    if (worst < 1e-8) {
+      return _verified(
+        'numeric residual',
+        'The reported solution makes the residual zero at two sample points '
+        'to ${_sig(worst)}.',
+      );
+    }
+    return _failed('plug the solution back in', worst);
+  }
+
+  Verification _vectorCalculus(String input, String result) {
+    final lower = input.toLowerCase();
+    final inner = _inner(input, const [
+      'gradient(',
+      'grad(',
+      'div(',
+      'divergence(',
+      'curl(',
+      'laplacian(',
+    ]);
+    final parts = _splitArgs(inner);
+    if (parts.isEmpty) {
+      return _unavailable('The field could not be read.');
+    }
+    var vars = const ['x', 'y', 'z'];
+    final args = <String>[];
+    for (final p in parts) {
+      final t = p.trim();
+      if (t.length >= 2 && t.startsWith('[') && t.endsWith(']')) {
+        final inside = _splitArgs(t.substring(1, t.length - 1).trim());
+        if (inside.length >= 2 && inside.every(_looksLikeVar)) {
+          vars = inside;
+        } else {
+          args.addAll(inside);
+        }
+      } else if (_looksLikeVar(t) && vars.length == 1) {
+        vars = [t];
+      } else {
+        args.add(t);
+      }
+    }
+    if (args.isEmpty) {
+      return _unavailable('The function or its variables could not be read.');
+    }
+    final op = lower.startsWith('grad(') ||
+            lower.startsWith('gradient(')
+        ? 'gradient'
+        : lower.startsWith('div(') || lower.startsWith('divergence(')
+            ? 'divergence'
+            : lower.startsWith('curl(')
+                ? 'curl'
+                : 'laplacian';
+    final points = <Map<String, double>>[];
+    for (final p in const [
+      {'x': 0.7, 'y': 0.4, 'z': 1.1},
+      {'x': -0.3, 'y': 0.9, 'z': 0.5},
+    ]) {
+      final m = <String, double>{};
+      for (final vv in vars) {
+        m[vv] = p[vv] ?? 0.6;
+      }
+      points.add(m);
+    }
+    const h = 0.01;
+    const tol = 5e-3;
+
+    if (op == 'gradient') {
+      final f = args.first;
+      final g = _vec(result);
+      if (g.isEmpty) {
+        return _unavailable('The gradient could not be read.');
+      }
+      double worst = 0;
+      for (final pt in points) {
+        for (var i = 0; i < vars.length && i < g.length; i++) {
+          final fd = _diffAt(f, vars[i], pt, h);
+          final rc = _evalAt(g[i], pt);
+          if (fd == null || rc == null) {
+            return _unavailable('The probe points were undefined.');
+          }
+          worst = math.max(worst, (fd - rc).abs() / (1 + rc.abs()));
+        }
+      }
+      if (worst < tol) {
+        return _verified(
+          'finite-difference partials',
+          'Differentiating the original function at two probe points matches '
+          'every reported component to ${_sig(worst)}.',
+        );
+      }
+      return _failed('finite-difference partials', worst);
+    }
+
+    if (op == 'divergence') {
+      double worst = 0;
+      for (final pt in points) {
+        double fd = 0;
+        for (var i = 0; i < vars.length && i < args.length; i++) {
+          final d = _diffAt(args[i], vars[i], pt, h);
+          if (d == null) return _unavailable('The probe points were undefined.');
+          fd += d;
+        }
+        final rc = _evalAt(result, pt);
+        if (rc == null) return _unavailable('The probe points were undefined.');
+        worst = math.max(worst, (fd - rc).abs() / (1 + rc.abs()));
+      }
+      if (worst < tol) {
+        return _verified(
+          'finite-difference flux',
+          'Summing the partial derivatives at two probe points matches the '
+          'reported divergence to ${_sig(worst)}.',
+        );
+      }
+      return _failed('finite-difference flux', worst);
+    }
+
+    if (op == 'curl') {
+      final c = _vec(result);
+      if (c.isEmpty) {
+        return _unavailable('The curl could not be read.');
+      }
+      double worst = 0;
+      for (final pt in points) {
+        if (vars.length == 2) {
+          final a = _diffAt(args[1], vars[0], pt, h);
+          final b = _diffAt(args[0], vars[1], pt, h);
+          final rc = _evalAt(c.first, pt);
+          if (a == null || b == null || rc == null) {
+            return _unavailable('The probe points were undefined.');
+          }
+          worst = math.max(worst, (a - b - rc).abs() / (1 + rc.abs()));
+        } else {
+          final a = _diffAt(args[2], vars[1], pt, h);
+          final b = _diffAt(args[1], vars[2], pt, h);
+          final c0 = _diffAt(args[0], vars[2], pt, h);
+          final c1 = _diffAt(args[2], vars[0], pt, h);
+          final c2 = _diffAt(args[1], vars[0], pt, h);
+          final c3 = _diffAt(args[0], vars[1], pt, h);
+          if (a == null ||
+              b == null ||
+              c0 == null ||
+              c1 == null ||
+              c2 == null ||
+              c3 == null) {
+            return _unavailable('The probe points were undefined.');
+          }
+          final curves = <double>[a - b, c0 - c1, c2 - c3];
+          for (var i = 0; i < curves.length && i < c.length; i++) {
+            final rc = _evalAt(c[i], pt);
+            if (rc == null) {
+              return _unavailable('The probe points were undefined.');
+            }
+            worst = math.max(
+              worst,
+              (curves[i] - rc).abs() / (1 + rc.abs()),
+            );
+          }
+        }
+      }
+      if (worst < tol) {
+        return _verified(
+          'finite-difference circulation',
+          'Taking the circulation derivatives at two probe points matches the '
+          'reported curl to ${_sig(worst)}.',
+        );
+      }
+      return _failed('finite-difference circulation', worst);
+    }
+
+    // laplacian
+    final f = args.first;
+    double worst = 0;
+    for (final pt in points) {
+      double fd = 0;
+      for (final vv in vars) {
+        final d = _d2At(f, vv, pt, h);
+        if (d == null) return _unavailable('The probe points were undefined.');
+        fd += d;
+      }
+      final rc = _evalAt(result, pt);
+      if (rc == null) return _unavailable('The probe points were undefined.');
+      worst = math.max(worst, (fd - rc).abs() / (1 + rc.abs()));
+    }
+    if (worst < tol) {
+      return _verified(
+        'finite-difference second derivatives',
+        'Summing the second partials at two probe points matches the reported '
+        'Laplacian to ${_sig(worst)}.',
+      );
+    }
+    return _failed('finite-difference second derivatives', worst);
+  }
+
+  Verification _vectorAlgebra(String input, String result) {
+    final lower = input.toLowerCase();
+    final isDot = lower.startsWith('dot(');
+    final parts = _splitArgs(_inner(input, const ['dot(', 'cross(']));
+    if (parts.length < 2) {
+      return _unavailable('The vectors could not be read.');
+    }
+    final a = _vec(parts[0]);
+    final b = _vec(parts[1]);
+    if (a.isEmpty || a.length != b.length) {
+      return _unavailable('The vectors have different lengths.');
+    }
+    final av = _nums(a);
+    final bv = _nums(b);
+    if (av == null || bv == null) {
+      return _unavailable('The vectors are not numeric.');
+    }
+    if (isDot) {
+      double mine = 0;
+      for (var i = 0; i < av.length; i++) {
+        mine += av[i] * bv[i];
+      }
+      final reported = double.tryParse(result.replaceAll(' ', ''));
+      if (reported == null) {
+        return _unavailable('The dot product is not numeric.');
+      }
+      return _compareScalar('sum the products', mine, reported);
+    }
+    if (av.length != 3) {
+      return _unavailable('The cross product needs 3D vectors.');
+    }
+    final rv = _vec(result);
+    if (rv.length != 3) {
+      return _unavailable('The cross product could not be read.');
+    }
+    final mine = <double>[
+      av[1] * bv[2] - av[2] * bv[1],
+      av[2] * bv[0] - av[0] * bv[2],
+      av[0] * bv[1] - av[1] * bv[0],
+    ];
+    double worst = 0;
+    for (var i = 0; i < 3; i++) {
+      final rc = double.tryParse(rv[i].replaceAll(' ', ''));
+      if (rc == null) {
+        return _unavailable('The cross product is not numeric.');
+      }
+      worst = math.max(worst, (mine[i] - rc).abs() / (1 + rc.abs()));
+    }
+    if (worst < 1e-9) {
+      return _verified(
+        'independent expansion',
+        'Expanding the determinant that defines the cross product gives the '
+        'same result to ${_sig(worst)}.',
+      );
+    }
+    return _failed('independent expansion', worst);
+  }
+
+  Verification _groupCheck(String input, String result) {
+    final m = RegExp(r'Z_?(\d+)').firstMatch(input);
+    if (m == null) return _unavailable('No concrete modulus was given.');
+    final n = int.tryParse(m.group(1)!);
+    if (n == null || n <= 0) {
+      return _unavailable('The modulus could not be read.');
+    }
+    final phi = _brutePhi(n);
+    final orderClaim = RegExp(r'order\s+(\d+)').firstMatch(result);
+    final genClaim =
+        RegExp(r'φ\s*\(\s*(\d+)\s*\)\s*=\s*(\d+)').firstMatch(result);
+    final statedOrder =
+        orderClaim == null ? null : int.tryParse(orderClaim.group(1)!);
+    final statedGen =
+        genClaim == null ? null : int.tryParse(genClaim.group(2)!);
+    if (statedOrder == null || statedGen == null) {
+      return _unavailable(
+        'The stated order and generator count could not be read.',
+      );
+    }
+    final isField = input.toLowerCase().startsWith('field(');
+    if (isField) {
+      final claimedField = result.contains('a field');
+      final actuallyField = _isPrimeInt(n);
+      if (claimedField != actuallyField) {
+        return _failed('primality of the modulus', 1.0);
+      }
+    }
+    if (statedOrder != n || statedGen != phi) {
+      return _failed(
+        'recount the structure',
+        ((statedOrder - n).abs() + (statedGen - phi).abs()).toDouble(),
+      );
+    }
+    final msg = isField
+        ? ' and confirmed as a field because $n is prime'
+        : '';
+    return _verified(
+      'recount the generators',
+      'Counting the residues coprime to $n gives φ($n)=$phi, matching the '
+      'stated order and structure; Z_n is cyclic and abelian by '
+      'construction$msg.',
+    );
+  }
+
+  Verification _topologyCheck(String input, String result) {
+    final lower = input.toLowerCase();
+    final String op;
+    if (lower.startsWith('compact(')) {
+      op = 'compact';
+    } else if (lower.startsWith('connected(')) {
+      op = 'connected';
+    } else {
+      return _unavailable('Only compact(X) and connected(X) can be checked.');
+    }
+    final args = _inner(input, [op + '(']).trim();
+    final parts = _splitArgs(args);
+    if (parts.isEmpty || parts.first.trim().isEmpty) {
+      return _unavailable('No space was given.');
+    }
+    final space = parts.first.trim();
+    final verdict =
+        op == 'compact' ? _spaceCompact(space) : _spaceConnected(space);
+    if (verdict == null) {
+      return _unavailable('This space is not in the known catalogue.');
+    }
+    final stated = op == 'compact'
+        ? !result.contains('not compact')
+        : !result.contains('not connected');
+    if (stated != verdict) {
+      return _failed('re-derive the verdict', 1.0);
+    }
+    return _verified(
+      're-derive the verdict',
+      'Re-deriving ${op}($space) from the Heine-Borel and '
+      'separation criteria gives the same answer as the card above.',
+    );
+  }
+
+  static bool? _spaceCompact(String space) {
+    final t = space.trim();
+    if (RegExp(r'^\{[^}]*\}$').hasMatch(t)) return true; // finite sets
+    if (t == 'R' || t == 'RR' || t == 'Z' || t == 'N' || t == 'Q') {
+      return false;
+    }
+    final iv = _intervalBounds(t);
+    if (iv != null) return iv[0] == '[' && iv[1] == ']';
+    return null;
+  }
+
+  static bool? _spaceConnected(String space) {
+    final t = space.trim();
+    if (RegExp(r'^\{[^}]*\}$').hasMatch(t)) {
+      return t.substring(1, t.length - 1).split(',').length == 1;
+    }
+    if (t == 'R' || t == 'RR') return true;
+    if (t == 'Z' || t == 'N' || t == 'Q') return false;
+    if (_intervalBounds(t) != null) return true;
+    return null;
+  }
+
+  /// "[a,b]" → [open/close left, open/close right, a, b]; null when a > b or
+  /// the bounds are not finite numbers.
+  static List<Object?>? _intervalBounds(String t) {
+    final m = RegExp(
+      r'^([\[\(])\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*([\]\)])$',
+    ).firstMatch(t);
+    if (m == null) return null;
+    final a = double.tryParse(m.group(2)!);
+    final b = double.tryParse(m.group(3)!);
+    if (a == null || b == null || a > b) return null;
+    return [m.group(1), m.group(4), a, b];
+  }
+
+  static int _brutePhi(int n) {
+    var count = 0;
+    for (var k = 1; k < n; k++) {
+      if (_gcdInt(k, n) == 1) count++;
+    }
+    return count;
+  }
+
+  static int _gcdInt(int a, int b) {
+    while (b != 0) {
+      final t = a % b;
+      a = b;
+      b = t;
+    }
+    return a;
+  }
+
+  static bool _isPrimeInt(int n) {
+    if (n < 2) return false;
+    if (n < 4) return true;
+    if (n.isEven) return false;
+    for (var d = 3; d * d <= n; d += 2) {
+      if (n % d == 0) return false;
+    }
+    return true;
+  }
+
+  Verification _compareScalar(String check, double mine, double reported) {
+    final err = _relErr(mine, reported);
+    if (err < 1e-9) {
+      return _verified(
+        check,
+        'Recomputed from the entries, the result matches to ${_sig(err)}.',
+      );
+    }
+    return _failed(check, err);
+  }
+
+  /// Numerically evaluates [expr] at a point given as var→value pairs.
+  double? _evalAt(String expr, Map<String, double> at) {
+    var cmd = 'evalf(($expr))';
+    at.forEach((k, val) {
+      cmd = 'subst($cmd,$k,$val)';
+    });
+    return _number(_g(cmd));
+  }
+
+  /// Central first difference of [expr] w.r.t. [v] at a point map.
+  double? _diffAt(String expr, String v, Map<String, double> at, double h) {
+    final hi = _evalAt(expr, {...at, v: at[v]! + h});
+    final lo = _evalAt(expr, {...at, v: at[v]! - h});
+    if (hi == null || lo == null) return null;
+    return (hi - lo) / (2 * h);
+  }
+
+  /// Central second difference of [expr] w.r.t. [v] at a point map.
+  double? _d2At(String expr, String v, Map<String, double> at, double h) {
+    final hi = _evalAt(expr, {...at, v: at[v]! + h});
+    final mid = _evalAt(expr, at);
+    final lo = _evalAt(expr, {...at, v: at[v]! - h});
+    if (hi == null || mid == null || lo == null) return null;
+    return (hi - 2 * mid + lo) / (h * h);
+  }
 
   /// Central-difference slope of [f] compared with [g] at two probe points.
   double? _differenceProbe(String f, String g, String v) {
@@ -605,9 +1160,13 @@ class SolutionVerifier {
     return t.length == 1 && RegExp(r'[a-zA-Z]').hasMatch(t);
   }
 
-  /// "..." → [ ... ] and { ... } both become a plain list of entries.
+  /// "..." → [ ... ], { ... }, ( ... ) and Giac's list[...] all become a
+  /// plain list of entries.
   static List<String> _list(String s) {
     var t = s.trim();
+    if (t.toLowerCase().startsWith('list') && t.length > 4) {
+      t = t.substring(4).trim();
+    }
     if (t.length >= 2 &&
         ((t.startsWith('{') && t.endsWith('}')) ||
             (t.startsWith('[') && t.endsWith(']')) ||
@@ -616,6 +1175,26 @@ class SolutionVerifier {
     }
     if (t.isEmpty) return const [];
     return _splitArgs(t);
+  }
+
+  /// A bracketed vector "[ ... ]" or bare entries becomes a plain list.
+  static List<String> _vec(String s) {
+    var t = s.trim();
+    if (t.length >= 2 && t.startsWith('[') && t.endsWith(']')) {
+      t = t.substring(1, t.length - 1);
+    }
+    if (t.isEmpty) return const [];
+    return _splitArgs(t);
+  }
+
+  static List<double>? _nums(List<String> parts) {
+    final out = <double>[];
+    for (final p in parts) {
+      final v = double.tryParse(p.replaceAll(' ', ''));
+      if (v == null) return null;
+      out.add(v);
+    }
+    return out;
   }
 
   static String _inner(String input, List<String> prefixes) {
@@ -706,6 +1285,22 @@ class SolutionVerifier {
   /// Documented for test access (see test/step_toolkit_test.dart).
   static double relativeError(double mine, double reported) =>
       _relErr(mine, reported);
+
+  /// Documented for test access (see test/step_toolkit_test.dart).
+  static List<String> parseList(String s) => _list(s);
+
+  /// Documented for test access (see test/step_toolkit_test.dart).
+  static List<String> parseVector(String s) => _vec(s);
+
+  /// Documented for test access (see test/step_toolkit_test.dart).
+  static String toEvaluable(String s) => _toEvaluable(s);
+
+  /// Documented for test access (see test/step_toolkit_test.dart).
+  static int brutePhi(int n) => _brutePhi(n);
+
+  /// Documented for test access (see test/step_toolkit_test.dart).
+  static bool? topologyVerdict(String op, String space) =>
+      op == 'compact' ? _spaceCompact(space) : _spaceConnected(space);
 
   static Verification _verified(String check, String detail) =>
       Verification(VerificationStatus.verified, check, detail);

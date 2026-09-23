@@ -54,4 +54,85 @@ void main() {
       );
     });
   });
+
+  group('list parsing', () {
+    test('Giac list[...] roots are split into entries', () {
+      // The on-device bug: solve(x^2-5x+6=0) reports "list[2,3]" and the
+      // verifier treated the whole string as one non-numeric "root".
+      expect(SolutionVerifier.parseList('list[2,3]'), ['2', '3']);
+      expect(SolutionVerifier.parseList('list[2]'), ['2']);
+    });
+
+    test('brace and bracket lists still parse', () {
+      expect(SolutionVerifier.parseList('{2,3}'), ['2', '3']);
+      expect(SolutionVerifier.parseList('[2,3]'), ['2', '3']);
+    });
+  });
+
+  group('vector parsing', () {
+    test('bracketed vectors split into components', () {
+      expect(
+        SolutionVerifier.parseVector('[2*x,2*y,0]'),
+        ['2*x', '2*y', '0'],
+      );
+      expect(SolutionVerifier.parseVector('[1,2,3]'), ['1', '2', '3']);
+    });
+  });
+
+  group('readable-latex conversion', () {
+    test('frac{...}{...} becomes division Giac can evaluate', () {
+      expect(SolutionVerifier.toEvaluable('frac{sqrt{2}}{2}'), '(sqrt(2))/(2)');
+      expect(SolutionVerifier.toEvaluable('frac{1}{sqrt{3}}'), '(1)/(sqrt(3))');
+    });
+
+    test('plain expressions and predicates pass through untouched', () {
+      expect(SolutionVerifier.toEvaluable('sin(pi/4)'), 'sin(pi/4)');
+      expect(SolutionVerifier.toEvaluable('mean([1,2,3])'), 'mean([1,2,3])');
+      expect(SolutionVerifier.toEvaluable('factor(x)'), 'factor(x)');
+    });
+  });
+
+  group('abstract algebra check', () {
+    test('group(Z_12) verifies order and generator count', () {
+      final solution = SolverEngine.instance.solve('group(Z_12)');
+      expect(solution.resultReadable, contains('order 12'));
+      expect(solution.resultReadable, contains('φ(12)=4'));
+      expect(solution.steps.last.title, 'Verification');
+      expect(solution.steps.last.rule, 'Verified');
+    });
+
+    test('brutePhi counts coprime residues', () {
+      expect(SolutionVerifier.brutePhi(12), 4);
+      expect(SolutionVerifier.brutePhi(7), 6);
+    });
+  });
+
+  group('topology check', () {
+    test('compact([0,1]) verifies as compact', () {
+      final solution = SolverEngine.instance.solve('compact([0,1])');
+      expect(solution.steps.last.rule, 'Verified');
+    });
+
+    test('compact(R) reports not compact and verifies', () {
+      final solution = SolverEngine.instance.solve('compact(R)');
+      expect(solution.resultReadable, contains('not compact'));
+      expect(solution.steps.last.rule, 'Verified');
+    });
+
+    test('connected(Q) reports not connected and verifies', () {
+      final solution = SolverEngine.instance.solve('connected(Q)');
+      expect(solution.resultReadable, contains('not connected'));
+      expect(solution.steps.last.rule, 'Verified');
+    });
+
+    test('topologyVerdict matches the catalogue', () {
+      expect(SolutionVerifier.topologyVerdict('compact', '[0,1]'), isTrue);
+      expect(SolutionVerifier.topologyVerdict('compact', '(0,1)'), isFalse);
+      expect(SolutionVerifier.topologyVerdict('compact', 'R'), isFalse);
+      expect(SolutionVerifier.topologyVerdict('compact', '{1,2}'), isTrue);
+      expect(SolutionVerifier.topologyVerdict('connected', 'R'), isTrue);
+      expect(SolutionVerifier.topologyVerdict('connected', 'Z'), isFalse);
+      expect(SolutionVerifier.topologyVerdict('connected', '{1,2}'), isFalse);
+    });
+  });
 }

@@ -3133,51 +3133,103 @@ extension PatternFallback on SolverEngine {
   }
 
   Solution _abstractAlgebra(String input) {
-    final steps = <SolutionStep>[];
-    steps.add(
+    final steps = <SolutionStep>[
       const SolutionStep(
         title: 'Group Axioms',
         latex: '(G,\\star):\\text{ closure, assoc, identity, inverses}',
         explanation: '4 axioms. Verify all four.',
         rule: 'Group Axioms',
       ),
-    );
-    steps.add(
       const SolutionStep(
         title: "Lagrange",
         latex: '|H|\\mid|G|',
         explanation: 'Subgroup order divides group order.',
         rule: "Lagrange",
       ),
-    );
-    steps.add(
       const SolutionStep(
         title: '1st Isomorphism Thm',
         latex: 'G/\\ker\\phi\\cong\\text{Im}\\phi',
         explanation: 'Quotient/kernel ≅ image.',
       ),
-    );
+    ];
+    final m = RegExp(r'Z_?(\d+)').firstMatch(input);
+    final n = m == null ? null : int.tryParse(m.group(1)!);
+    final isField = input.toLowerCase().startsWith('field(');
+    if (n != null && n > 1) {
+      final phi = _phi(n);
+      final field = isField ? _isPrimeInt2(n) : null;
+      steps.add(
+        SolutionStep(
+          title: 'Structure of Z_$n',
+          latex: '\\mathbb{Z}_$n: order $n, cyclic, abelian, φ($n)=$phi '
+              'generators'
+              '${field == null ? '' : field ? ', field' : ', not a field'}',
+          explanation: 'Generators of Z_$n are the units mod $n: there are '
+              'φ($n)=$phi of them.',
+          rule: 'Euler φ',
+        ),
+      );
+      final res = 'Z_$n: order $n, cyclic, abelian, φ($n)=$phi generators'
+          '${field == null ? '' : field ? ', a field (n prime)' : ', NOT a field (n composite)'}';
+      final resLatex =
+          '\\mathbb{Z}_$n: order $n, φ($n)=$phi generators'
+          '${field == null ? '' : field ? ', \\text{field}' : ', \\text{not a field}'}';
+      return Solution(
+        input: input,
+        domain: MathDomain.abstractAlgebra,
+        operation: 'Abstract Algebra',
+        resultLatex: resLatex,
+        resultReadable: res,
+        steps: steps,
+        tip: 'The units mod $n form the automorphism group; there are φ($n)=$phi.',
+      );
+    }
     return Solution(
       input: input,
       domain: MathDomain.abstractAlgebra,
       operation: 'Abstract Algebra',
       resultLatex: '\\text{Abstract Algebra}',
       steps: steps,
-      tip: 'Groups→Rings→Fields: each adds structure.',
+      tip: 'Groups→Rings→Fields: each adds structure. Use a concrete '
+          'modulus: group(Z_12).',
     );
   }
 
-  Solution _topology(String input) {
-    final steps = <SolutionStep>[];
-    steps.add(
+  int _phi(int n) {
+    var result = n;
+    var k = n;
+    var p = 2;
+    while (p * p <= k) {
+      if (k % p == 0) {
+        while (k % p == 0) {
+          k ~/= p;
+        }
+        result -= result ~/ p;
+      }
+      p++;
+    }
+    if (k > 1) result -= result ~/ k;
+    return result;
+  }
+
+  bool _isPrimeInt2(int n) {
+    if (n < 2) return false;
+    if (n < 4) return true;
+    if (n.isEven) return false;
+    for (var d = 3; d * d <= n; d += 2) {
+      if (n % d == 0) return false;
+    }
+    return true;
+  }
+
+Solution _topology(String input) {
+    final lower = input.toLowerCase();
+    final steps = <SolutionStep>[
       const SolutionStep(
         title: 'Topological Space',
         latex: '(X,\\mathcal{T}):\\;\\emptyset,X\\in\\mathcal{T}',
-        explanation:
-            '3 axioms: empty+X open, arbitrary unions, finite intersections.',
+        explanation: '3 axioms: empty+X open, arbitrary unions, finite intersections.',
       ),
-    );
-    steps.add(
       const SolutionStep(
         title: 'Compactness',
         latex:
@@ -3185,22 +3237,121 @@ extension PatternFallback on SolverEngine {
         explanation: 'Heine-Borel: in ℝⁿ, compact↔closed+bounded.',
         rule: 'Compactness',
       ),
-    );
-    steps.add(
       const SolutionStep(
         title: 'Connectedness',
         latex:
             'X\\text{ connected}\\iff X\\neq A\\cup B\\text{ (disjoint open)}',
         explanation: 'IVT: continuous image of connected=connected.',
       ),
-    );
+    ];
+    final op = lower.startsWith('compact(')
+        ? 'compact'
+        : lower.startsWith('connected(')
+            ? 'connected'
+            : null;
+    if (op != null) {
+      final args = _splitArgs(_ex(input, [op + '(']))
+          .map((s) => s.trim())
+          .toList();
+      final space = args.isEmpty ? '' : args[0];
+      final verdict = op == 'compact'
+          ? _spaceCompact(space)
+          : _spaceConnected(space);
+      if (verdict != null) {
+        final reason = op == 'compact'
+            ? (verdict
+                ? 'closed and bounded (Heine-Borel)'
+                : _spaceWhy(space))
+            : (verdict
+                ? 'no non-trivial separation in R'
+                : _spaceWhy2(space));
+        steps.add(
+          SolutionStep(
+            title: 'Verdict',
+            latex: '${op}(${space.replaceAll('*', '\\cdot')})\\;'
+                '${verdict ? '\\text{YES}' : '\\text{NO}'}: $reason',
+            explanation: 'By definition: ${op}(${space}) = '
+                '${verdict ? 'true' : 'false'} ($reason).',
+            rule: 'Heine-Borel',
+          ),
+        );
+        final res = '${op}(${space}): '
+            '${verdict ? 'yes, $op' : 'no, not $op'} ($reason)';
+        return Solution(
+          input: input,
+          domain: MathDomain.topology,
+          operation: 'Topology',
+          resultLatex:
+              '${op}(${space})\\;${verdict ? '\\text{$op}' : '\\text{not $op}'}',
+          resultReadable: res,
+          steps: steps,
+          tip: '$space is ${verdict ? '' : 'NOT '}${op}.',
+        );
+      }
+    }
     return Solution(
       input: input,
       domain: MathDomain.topology,
       operation: 'Topology',
       resultLatex: '\\text{Topological Analysis}',
       steps: steps,
+      tip: 'Ask a concrete question: compact([0,1]) or connected(Q).',
     );
+  }
+
+  bool? _spaceCompact(String space) {
+    final t = space.trim();
+    if (RegExp(r'^\{[^}]*\}$').hasMatch(t)) return true; // finite sets
+    if (t == 'R' || t == 'RR' || t == 'Z' || t == 'N' || t == 'Q') {
+      return false;
+    }
+    final iv = _topoInterval(t);
+    if (iv != null) return iv[0] == '[' && iv[1] == ']';
+    return null;
+  }
+
+  bool? _spaceConnected(String space) {
+    final t = space.trim();
+    if (RegExp(r'^\{[^}]*\}$').hasMatch(t)) {
+      return t.substring(1, t.length - 1).split(',').length == 1;
+    }
+    if (t == 'R' || t == 'RR') return true;
+    if (t == 'Z' || t == 'N' || t == 'Q') return false;
+    if (_topoInterval(t) != null) return true;
+    return null;
+  }
+
+  String _spaceWhy(String space) {
+    final t = space.trim();
+    if (t == 'R' || t == 'RR' || t == 'Z' || t == 'N' || t == 'Q') {
+      return 'unbounded or not closed';
+    }
+    final iv = _topoInterval(t);
+    if (iv != null) {
+      final left = iv[0] as String;
+      final right = iv[1] as String;
+      if (left == '(' || right == ')') return 'not closed';
+    }
+    return 'not compact';
+  }
+
+  String _spaceWhy2(String space) {
+    final t = space.trim();
+    if (t == 'Z' || t == 'N') return 'discrete';
+    if (t == 'Q') return 'separable (cuts)';
+    return 'has a separation';
+  }
+
+  /// "[a,b]" → [left bracket, right bracket, a, b]; null when invalid.
+  List<Object>? _topoInterval(String t) {
+    final m = RegExp(
+      r'^([\[\(])\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*([\]\)])$',
+    ).firstMatch(t);
+    if (m == null) return null;
+    final a = double.tryParse(m.group(2)!);
+    final b = double.tryParse(m.group(3)!);
+    if (a == null || b == null || a > b) return null;
+    return [m.group(1)!, m.group(4)!, a, b];
   }
 
   Solution _vectorCalculus(String input) {
