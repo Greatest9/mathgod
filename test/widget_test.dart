@@ -1,30 +1,46 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter/material.dart';
+// test/widget_test.dart
 import 'package:flutter_test/flutter_test.dart';
-
 import 'package:mathgod/main.dart';
+import 'package:mathgod/engine/solver_engine.dart';
+import 'package:mathgod/engine/word_problem_parser.dart';
+import 'package:mathgod/models/history_item.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('MathGodApp smoke test', (WidgetTester tester) async {
+    await tester.pumpWidget(const MathGodApp());
+    expect(find.byType(MathGodApp), findsOneWidget);
+  });
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+  group('Word Problem Parser Tests', () {
+    test('Derivative parsing', () {
+      expect(parseWordProblem('derivative of sin(x)'), 'd/dx[sin(x)]');
+      expect(parseWordProblem('differentiate x^3'), 'd/dx[x^3]');
+    });
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    test('Integral parsing', () {
+      expect(parseWordProblem('integral of x^2'), 'int(x^2)');
+      expect(parseWordProblem('integrate e^x from 0 to 1'), 'int(e^x, 0, 1)');
+    });
+  });
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+  group('Solver Engine Fallback Tests', () {
+    test('Derivative pattern solve', () {
+      final sol = SolverEngine.instance.solve('d/dx[x^5]');
+      expect(sol.operation, 'Derivative');
+      expect(sol.steps.isNotEmpty, true);
+    });
+  });
+
+  group('History Item Tests', () {
+    test('HistoryItem fromSolution and JSON conversion', () {
+      final sol = SolverEngine.instance.solve('d/dx[x^3]');
+      final item = HistoryItem.fromSolution(sol);
+      expect(item.input, sol.input);
+      final json = item.toJson();
+      final fromJson = HistoryItem.fromJson(json);
+      expect(fromJson.input, item.input);
+      expect(fromJson.operation, item.operation);
+      expect(fromJson.domain, item.domain);
+    });
   });
 }

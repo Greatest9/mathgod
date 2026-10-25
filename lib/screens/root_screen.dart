@@ -4,6 +4,9 @@ import 'home_screen.dart';
 import 'solver_screen.dart';
 import 'library_screen.dart';
 import 'unsolved_screen.dart';
+import 'about_screen.dart';
+import 'license_screen.dart';
+import '../services/license_manager.dart';
 
 class RootScreen extends StatefulWidget {
   const RootScreen({super.key});
@@ -11,8 +14,9 @@ class RootScreen extends StatefulWidget {
   State<RootScreen> createState() => _RootScreenState();
 }
 
-class _RootScreenState extends State<RootScreen> {
+class _RootScreenState extends State<RootScreen> with WidgetsBindingObserver {
   int _idx = 0;
+  bool _verified = false;
 
   static const _tabs = [
     (
@@ -37,8 +41,62 @@ class _RootScreenState extends State<RootScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _enforceLicense();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _enforceLicense();
+  }
+
+  Future<void> _enforceLicense() async {
+    final ok = await LicenseManager.instance.isActivated();
+    if (!mounted) return;
+    if (!ok) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LicenseScreen()),
+        (_) => false,
+      );
+    } else if (!_verified) {
+      setState(() => _verified = true);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (!_verified) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(color: Color(0xFF7C6FFF)),
+        ),
+      );
+    }
     return Scaffold(
+      appBar: AppBar(
+        title: const Text("Math God"),
+        backgroundColor: const Color(0xFF10101C),
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline, color: Color(0xFF7777AA)),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AboutScreen()),
+              );
+            },
+          ),
+        ],
+      ),
       body: IndexedStack(index: _idx, children: _screens),
       bottomNavigationBar: _buildNav(),
     );
@@ -50,7 +108,7 @@ class _RootScreenState extends State<RootScreen> {
         color: const Color(0xFF10101C),
         border: const Border(top: BorderSide(color: Color(0xFF232336))),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 20),
+          BoxShadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 20),
         ],
       ),
       child: SafeArea(
@@ -71,7 +129,7 @@ class _RootScreenState extends State<RootScreen> {
                   ),
                   decoration: BoxDecoration(
                     color: sel
-                        ? const Color(0xFF7C6FFF).withOpacity(0.12)
+                        ? const Color(0xFF7C6FFF).withValues(alpha: 0.12)
                         : Colors.transparent,
                     borderRadius: BorderRadius.circular(12),
                   ),

@@ -66,12 +66,12 @@ class UnsolvedScreen extends StatelessWidget {
     decoration: BoxDecoration(
       gradient: LinearGradient(
         colors: [
-          const Color(0xFFFF6B8A).withOpacity(0.07),
-          const Color(0xFFFFB347).withOpacity(0.04),
+          const Color(0xFFFF6B8A).withValues(alpha: 0.07),
+          const Color(0xFFFFB347).withValues(alpha: 0.04),
         ],
       ),
       borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: const Color(0xFFFF6B8A).withOpacity(0.2)),
+      border: Border.all(color: const Color(0xFFFF6B8A).withValues(alpha: 0.2)),
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -120,7 +120,7 @@ class _ProblemCardState extends State<_ProblemCard> {
       decoration: BoxDecoration(
         color: const Color(0xFF161624),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFFF6B8A).withOpacity(0.25)),
+        border: Border.all(color: const Color(0xFFFF6B8A).withValues(alpha: 0.25)),
       ),
       child: Column(
         children: [
@@ -223,12 +223,12 @@ class _ProblemCardState extends State<_ProblemCard> {
                               decoration: BoxDecoration(
                                 color: const Color(
                                   0xFF7C6FFF,
-                                ).withOpacity(0.07),
+                                ).withValues(alpha: 0.07),
                                 borderRadius: BorderRadius.circular(8),
                                 border: Border.all(
                                   color: const Color(
                                     0xFF7C6FFF,
-                                  ).withOpacity(0.2),
+                                  ).withValues(alpha: 0.2),
                                 ),
                               ),
                               child: Text(
@@ -248,10 +248,10 @@ class _ProblemCardState extends State<_ProblemCard> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFFFB347).withOpacity(0.07),
+                        color: const Color(0xFFFFB347).withValues(alpha: 0.07),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: const Color(0xFFFFB347).withOpacity(0.2),
+                          color: const Color(0xFFFFB347).withValues(alpha: 0.2),
                         ),
                       ),
                       child: Row(
@@ -288,9 +288,9 @@ class _ProblemCardState extends State<_ProblemCard> {
   Widget _badge(String text, Color color) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
     decoration: BoxDecoration(
-      color: color.withOpacity(0.12),
+      color: color.withValues(alpha: 0.12),
       borderRadius: BorderRadius.circular(5),
-      border: Border.all(color: color.withOpacity(0.4)),
+      border: Border.all(color: color.withValues(alpha: 0.4)),
     ),
     child: Text(
       text,

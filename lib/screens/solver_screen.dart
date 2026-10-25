@@ -1,10 +1,32 @@
 // lib/screens/solver_screen.dart
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
+import 'package:screenshot/screenshot.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
 import '../engine/solver_engine.dart';
 import '../models/solution.dart';
+import '../services/history_service.dart';
+import '../widgets/function_grapher.dart';
+import '../widgets/history_bottom_sheet.dart';
+import '../widgets/math_keypad.dart';
+
+class _SolveRequest {
+  const _SolveRequest(this.input, this.approximate);
+
+  final String input;
+  final bool approximate;
+}
+
+Solution _solveInBackground(_SolveRequest request) =>
+    SolverEngine.instance.solve(
+      request.input,
+      approximate: request.approximate,
+    );
 
 class SolverScreen extends StatefulWidget {
   final String? initialInput;
@@ -17,8 +39,11 @@ class SolverScreen extends StatefulWidget {
 class _SolverScreenState extends State<SolverScreen> {
   final _ctrl = TextEditingController();
   final _focus = FocusNode();
+  final _screenshotCtrl = ScreenshotController();
   Solution? _solution;
   bool _loading = false;
+  bool _approximate = false;
+  bool _showKeypad = true;
 
   @override
   void initState() {
@@ -36,18 +61,68 @@ class _SolverScreenState extends State<SolverScreen> {
     super.dispose();
   }
 
-  void _solve() {
+  Future<void> _solve() async {
     final input = _ctrl.text.trim();
     if (input.isEmpty) return;
     _focus.unfocus();
     setState(() => _loading = true);
-    Future.delayed(300.ms, () {
+    // Run the solver on a worker isolate so heavy Giac calls never block the UI
+    // thread. Each isolate loads its own Dart-side GiacFFI wrapper; the native
+    // wrapper serialises the shared CAS context with a mutex, so this is safe.
+    final approximate = _approximate;
+    try {
+      final solution = await compute(
+        _solveInBackground,
+        _SolveRequest(input, approximate),
+      );
       if (!mounted) return;
       setState(() {
-        _solution = SolverEngine.instance.solve(input);
+        _solution = solution;
         _loading = false;
       });
-    });
+      // Auto-save to calculation history
+      HistoryService.instance.addEntry(solution);
+    } catch (e) {
+      debugPrint('Solver error: $e');
+      if (!mounted) return;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Solver error: $e')));
+    }
+  }
+
+  Future<void> _shareResult() async {
+    if (_solution == null) return;
+    try {
+      // Capture the result card as PNG
+      final Uint8List? imageBytes = await _screenshotCtrl.capture(
+        pixelRatio: 2.5,
+      );
+      if (imageBytes == null) return;
+
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/mathgod_result.png');
+      await file.writeAsBytes(imageBytes);
+
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        text:
+            'Solved with Math God 🧠\n'
+            'Input: ${_solution!.input}\n'
+            'Result: ${_solution!.resultReadable}',
+        subject: 'Math God — ${_solution!.operation}',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not share: $e'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -68,6 +143,12 @@ class _SolverScreenState extends State<SolverScreen> {
                   ? _buildEmpty()
                   : _buildResult(),
             ),
+            if (_showKeypad)
+              MathKeypad(
+                controller: _ctrl,
+                onSolve: _solve,
+                onClose: () => setState(() => _showKeypad = false),
+              ),
           ],
         ),
       ),
@@ -91,7 +172,114 @@ class _SolverScreenState extends State<SolverScreen> {
               const SizedBox(width: 8),
               Text("Solver", style: Theme.of(context).textTheme.titleLarge),
               const Spacer(),
-              if (_solution != null)
+              // Exact / Decimal toggle
+              GestureDetector(
+                onTap: () {
+                  setState(() => _approximate = !_approximate);
+                  if (_solution != null) _solve();
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: _approximate
+                        ? const Color(0xFF00E5AA).withValues(alpha: 0.15)
+                        : const Color(0xFF7C6FFF).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: _approximate
+                          ? const Color(0xFF00E5AA).withValues(alpha: 0.4)
+                          : const Color(0xFF7C6FFF).withValues(alpha: 0.4),
+                    ),
+                  ),
+                  child: Text(
+                    _approximate ? '≈ Decimal' : '= Exact',
+                    style: TextStyle(
+                      color: _approximate
+                          ? const Color(0xFF00E5AA)
+                          : const Color(0xFF7C6FFF),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              // Math Keypad toggle button
+              IconButton(
+                icon: Icon(
+                  _showKeypad ? Icons.keyboard_alt : Icons.keyboard_alt_outlined,
+                  color: _showKeypad ? const Color(0xFF00E5AA) : const Color(0xFF7777AA),
+                  size: 20,
+                ),
+                onPressed: () => setState(() => _showKeypad = !_showKeypad),
+                tooltip: 'Toggle Math Keypad',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(
+                  minWidth: 36,
+                  minHeight: 36,
+                ),
+              ),
+              const SizedBox(width: 4),
+              // History button
+              IconButton(
+                icon: const Icon(
+                  Icons.history_rounded,
+                  color: Color(0xFF7C6FFF),
+                  size: 20,
+                ),
+                onPressed: () {
+                  HistoryBottomSheet.show(
+                    context,
+                    onSelectInput: (selected) {
+                      _ctrl.text = selected;
+                      _solve();
+                    },
+                  );
+                },
+                tooltip: 'Calculation History',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(
+                  minWidth: 36,
+                  minHeight: 36,
+                ),
+              ),
+              const SizedBox(width: 4),
+              // 2D Graph / Plot button
+              IconButton(
+                icon: const Icon(
+                  Icons.show_chart_rounded,
+                  color: Color(0xFF00E5AA),
+                  size: 20,
+                ),
+                onPressed: () {
+                  final initial = _solution != null && _solution!.input.contains('x')
+                      ? _solution!.input
+                      : (_ctrl.text.isNotEmpty ? _ctrl.text : 'sin(x)');
+                  FunctionGrapher.show(context, initialExpression: initial);
+                },
+                tooltip: '2D Function Grapher',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(
+                  minWidth: 36,
+                  minHeight: 36,
+                ),
+              ),
+              if (_solution != null) ...[
+                // Share button
+                IconButton(
+                  icon: const Icon(
+                    Icons.share_rounded,
+                    color: Color(0xFF7C6FFF),
+                    size: 20,
+                  ),
+                  onPressed: _shareResult,
+                  tooltip: 'Share result',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 36,
+                    minHeight: 36,
+                  ),
+                ),
                 TextButton(
                   onPressed: () => setState(() {
                     _solution = null;
@@ -102,6 +290,7 @@ class _SolverScreenState extends State<SolverScreen> {
                     style: TextStyle(color: Color(0xFF7777AA), fontSize: 13),
                   ),
                 ),
+              ],
             ],
           ),
           const SizedBox(height: 12),
@@ -111,6 +300,11 @@ class _SolverScreenState extends State<SolverScreen> {
                 child: TextField(
                   controller: _ctrl,
                   focusNode: _focus,
+                  onTap: () {
+                    if (!_showKeypad) {
+                      setState(() => _showKeypad = true);
+                    }
+                  },
                   style: const TextStyle(
                     fontFamily: 'IBMPlexMono',
                     color: Color(0xFFF0F0FF),
@@ -234,12 +428,16 @@ class _SolverScreenState extends State<SolverScreen> {
 
   Widget _buildResult() {
     final s = _solution!;
+    // Wrap the result card in Screenshot so we can capture it for sharing
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _ResultCard(solution: s),
+          Screenshot(
+            controller: _screenshotCtrl,
+            child: _ShareableResultCard(solution: s),
+          ),
           const SizedBox(height: 20),
           if (s.tip != null) _TipCard(tip: s.tip!),
           if (s.tip != null) const SizedBox(height: 16),
@@ -250,9 +448,10 @@ class _SolverScreenState extends State<SolverScreen> {
   }
 }
 
-class _ResultCard extends StatelessWidget {
+// ─── Shareable result card (wrapped in Screenshot) ────────────────────────────
+class _ShareableResultCard extends StatelessWidget {
   final Solution solution;
-  const _ResultCard({required this.solution});
+  const _ShareableResultCard({required this.solution});
 
   @override
   Widget build(BuildContext context) {
@@ -260,16 +459,17 @@ class _ResultCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
+        color: const Color(0xFF10101C), // solid bg so PNG looks clean
         gradient: LinearGradient(
           colors: [
-            const Color(0xFF7C6FFF).withOpacity(0.1),
-            const Color(0xFF00E5AA).withOpacity(0.05),
+            const Color(0xFF7C6FFF).withValues(alpha: 0.1),
+            const Color(0xFF00E5AA).withValues(alpha: 0.05),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF7C6FFF).withOpacity(0.3)),
+        border: Border.all(color: const Color(0xFF7C6FFF).withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -315,18 +515,21 @@ class _ResultCard extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Center(
-            child: Math.tex(
-              s.resultLatex,
-              textStyle: const TextStyle(
-                fontSize: 28,
-                color: Color(0xFFF0F0FF),
-              ),
-              onErrorFallback: (_) => Text(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Math.tex(
                 s.resultLatex,
-                style: const TextStyle(
-                  fontFamily: 'IBMPlexMono',
-                  color: Color(0xFF00E5AA),
-                  fontSize: 18,
+                textStyle: const TextStyle(
+                  fontSize: 28,
+                  color: Color(0xFFF0F0FF),
+                ),
+                onErrorFallback: (_) => Text(
+                  s.resultLatex,
+                  style: const TextStyle(
+                    fontFamily: 'IBMPlexMono',
+                    color: Color(0xFF00E5AA),
+                    fontSize: 18,
+                  ),
                 ),
               ),
             ),
@@ -344,6 +547,55 @@ class _ResultCard extends StatelessWidget {
               ),
             ),
           ],
+          if (s.input.contains('x') || s.resultReadable.contains('x')) ...[
+            const SizedBox(height: 12),
+            Center(
+              child: GestureDetector(
+                onTap: () {
+                  final toPlot = s.resultReadable.isNotEmpty && !s.resultReadable.contains('Error')
+                      ? s.resultReadable
+                      : s.input;
+                  FunctionGrapher.show(context, initialExpression: toPlot);
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF00E5AA).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFF00E5AA).withValues(alpha: 0.3)),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.show_chart_rounded, color: Color(0xFF00E5AA), size: 15),
+                      SizedBox(width: 6),
+                      Text(
+                        "Plot Function",
+                        style: TextStyle(
+                          color: Color(0xFF00E5AA),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          // Watermark so shared images are attributed
+          Center(
+            child: Text(
+              'Math God  ·  math.god',
+              style: TextStyle(
+                color: const Color(0xFF7C6FFF).withValues(alpha: 0.5),
+                fontSize: 10,
+                letterSpacing: 1.0,
+                fontFamily: 'IBMPlexMono',
+              ),
+            ),
+          ),
         ],
       ),
     ).animate().fadeIn(duration: 350.ms).slideY(begin: 0.06);
@@ -359,9 +611,9 @@ class _TipCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF00E5AA).withOpacity(0.05),
+        color: const Color(0xFF00E5AA).withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF00E5AA).withOpacity(0.2)),
+        border: Border.all(color: const Color(0xFF00E5AA).withValues(alpha: 0.2)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -431,7 +683,7 @@ class _StepsSection extends StatelessWidget {
 
 class _StepCard extends StatefulWidget {
   final int num;
-  final dynamic step;
+  final SolutionStep step; // ← was `dynamic`, now properly typed
   const _StepCard({required this.num, required this.step});
 
   @override
@@ -497,7 +749,7 @@ class _StepCardState extends State<_StepCard> {
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF00E5AA).withOpacity(0.1),
+                              color: const Color(0xFF00E5AA).withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
@@ -540,18 +792,21 @@ class _StepCardState extends State<_StepCard> {
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Center(
-                      child: Math.tex(
-                        s.latex,
-                        textStyle: const TextStyle(
-                          fontSize: 15,
-                          color: Color(0xFFF0F0FF),
-                        ),
-                        onErrorFallback: (_) => SelectableText(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Math.tex(
                           s.latex,
-                          style: const TextStyle(
-                            fontFamily: 'IBMPlexMono',
-                            color: Color(0xFF00E5AA),
-                            fontSize: 13,
+                          textStyle: const TextStyle(
+                            fontSize: 15,
+                            color: Color(0xFFF0F0FF),
+                          ),
+                          onErrorFallback: (_) => SelectableText(
+                            s.latex,
+                            style: const TextStyle(
+                              fontFamily: 'IBMPlexMono',
+                              color: Color(0xFF00E5AA),
+                              fontSize: 13,
+                            ),
                           ),
                         ),
                       ),

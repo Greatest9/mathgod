@@ -189,7 +189,7 @@ class _TheoremCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: t.isUnsolved
-                ? const Color(0xFFFF6B8A).withOpacity(0.3)
+                ? const Color(0xFFFF6B8A).withValues(alpha: 0.3)
                 : const Color(0xFF232336),
           ),
         ),
@@ -209,10 +209,10 @@ class _TheoremCard extends StatelessWidget {
                             vertical: 2,
                           ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFFF6B8A).withOpacity(0.1),
+                            color: const Color(0xFFFF6B8A).withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(4),
                             border: Border.all(
-                              color: const Color(0xFFFF6B8A).withOpacity(0.4),
+                              color: const Color(0xFFFF6B8A).withValues(alpha: 0.4),
                             ),
                           ),
                           child: const Text(
@@ -288,11 +288,11 @@ class _TheoremDetail extends StatelessWidget {
                     gradient: LinearGradient(
                       colors: t.isUnsolved
                           ? [
-                              const Color(0xFFFF6B8A).withOpacity(0.15),
+                              const Color(0xFFFF6B8A).withValues(alpha: 0.15),
                               const Color(0xFF080810),
                             ]
                           : [
-                              const Color(0xFF7C6FFF).withOpacity(0.15),
+                              const Color(0xFF7C6FFF).withValues(alpha: 0.15),
                               const Color(0xFF080810),
                             ],
                       begin: Alignment.topCenter,
@@ -457,12 +457,12 @@ class _TheoremDetail extends StatelessWidget {
     padding: const EdgeInsets.all(14),
     decoration: BoxDecoration(
       color: t.isUnsolved
-          ? const Color(0xFFFF6B8A).withOpacity(0.04)
+          ? const Color(0xFFFF6B8A).withValues(alpha: 0.04)
           : const Color(0xFF161624),
       borderRadius: BorderRadius.circular(12),
       border: Border.all(
         color: t.isUnsolved
-            ? const Color(0xFFFF6B8A).withOpacity(0.2)
+            ? const Color(0xFFFF6B8A).withValues(alpha: 0.2)
             : const Color(0xFF232336),
       ),
     ),
@@ -514,9 +514,9 @@ class _TheoremDetail extends StatelessWidget {
     margin: const EdgeInsets.only(bottom: 24),
     padding: const EdgeInsets.all(14),
     decoration: BoxDecoration(
-      color: const Color(0xFFFFB347).withOpacity(0.07),
+      color: const Color(0xFFFFB347).withValues(alpha: 0.07),
       borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: const Color(0xFFFFB347).withOpacity(0.25)),
+      border: Border.all(color: const Color(0xFFFFB347).withValues(alpha: 0.25)),
     ),
     child: Row(
       children: [
