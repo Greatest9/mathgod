@@ -5,6 +5,8 @@ import 'solver_screen.dart';
 import 'library_screen.dart';
 import 'unsolved_screen.dart';
 import 'about_screen.dart';
+import 'license_screen.dart';
+import '../services/license_manager.dart';
 
 class RootScreen extends StatefulWidget {
   const RootScreen({super.key});
@@ -12,8 +14,9 @@ class RootScreen extends StatefulWidget {
   State<RootScreen> createState() => _RootScreenState();
 }
 
-class _RootScreenState extends State<RootScreen> {
+class _RootScreenState extends State<RootScreen> with WidgetsBindingObserver {
   int _idx = 0;
+  bool _verified = false;
 
   static const _tabs = [
     (
@@ -38,7 +41,45 @@ class _RootScreenState extends State<RootScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _enforceLicense();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _enforceLicense();
+  }
+
+  Future<void> _enforceLicense() async {
+    final ok = await LicenseManager.instance.isActivated();
+    if (!mounted) return;
+    if (!ok) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LicenseScreen()),
+        (_) => false,
+      );
+    } else if (!_verified) {
+      setState(() => _verified = true);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (!_verified) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(color: Color(0xFF7C6FFF)),
+        ),
+      );
+    }
     return Scaffold(
       appBar: AppBar(
         title: const Text("Math God"),
