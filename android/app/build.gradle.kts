@@ -1,12 +1,3 @@
-import java.util.Properties
-import java.io.FileInputStream
-
-// Load keystore properties
-val keystoreProperties = Properties()
-val keystorePropertiesFile = rootProject.file("key.properties")
-if (keystorePropertiesFile.exists()) {
-    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
-}
 
 plugins {
     id("com.android.application")
@@ -26,23 +17,6 @@ android {
 
     kotlinOptions {
         jvmTarget = JavaVersion.VERSION_17.toString()
-    }
-
-    signingConfigs {
-        create("release") {
-            // Priority 1: key.properties (Local) | Priority 2: Env Vars (CI)
-            keyAlias = (keystoreProperties["keyAlias"] as? String) ?: System.getenv("KEY_ALIAS")
-            keyPassword = (keystoreProperties["keyPassword"] as? String) ?: System.getenv("KEY_PASSWORD")
-            storePassword = (keystoreProperties["storePassword"] as? String) ?: System.getenv("KEYSTORE_PASSWORD")
-            
-            // Resolve keystore file path
-            storeFile = if (keystoreProperties.containsKey("storeFile")) {
-                file(keystoreProperties["storeFile"] as String)
-            } else {
-                // This matches the path created in your GitHub YAML
-                file("../mathgod-keystore.jks")
-            }
-        }
     }
 
     defaultConfig {
@@ -75,9 +49,13 @@ android {
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release")
+            // Use the free default Android debug signing key.
+            // This removes the custom keystore requirement.
+            signingConfig = signingConfigs.getByName("debug")
+
             isMinifyEnabled = true
             isShrinkResources = true
+
             proguardFiles(
                 getDefaultProguardFile("proguard-android.txt"),
                 "proguard-rules.pro"
