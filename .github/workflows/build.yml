@@ -38,6 +38,12 @@ jobs:
     - name: 📦 Install dependencies
       run: flutter pub get
     
+    - name: 🔍 Analyze
+      run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+    - name: 🧪 Run tests
+      run: flutter test
+
     - name: 🔧 Build APK (Release)
       run: flutter build apk --release
       env:
@@ -45,11 +51,19 @@ jobs:
         KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
         KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
     
+    - name: 📤 Upload APK artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: mathgod-release-apk
+        path: build/app/outputs/flutter-apk/app-release.apk
+
     - name: 🏷️ Generate release tag
+      if: github.ref_name == 'main' || github.ref_name == 'master'
       id: tag
       run: echo "tag=build-$(date +'%Y%m%d-%H%M%S')" >> $GITHUB_OUTPUT
     
     - name: 🚀 Publish GitHub Release
+      if: github.ref_name == 'main' || github.ref_name == 'master'
       uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ steps.tag.outputs.tag }}

@@ -19,7 +19,7 @@ void main() {
 
     test('Integral parsing', () {
       expect(parseWordProblem('integral of x^2'), 'int(x^2)');
-      expect(parseWordProblem('integrate e^x from 0 to 1'), 'int(e^x, 0, 1)');
+      expect(parseWordProblem('integrate e^x from 0 to 1'), 'int(e^x,0,1)');
     });
   });
 

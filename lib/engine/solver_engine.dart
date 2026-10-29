@@ -12,10 +12,10 @@
 import 'dart:math' as math;
 import '../models/solution.dart';
 import 'giac_ffi.dart';
+import 'math_interpreter.dart';
 import 'matrix_algebra.dart';
 import 'step_toolkit.dart';
 import 'symbolic.dart';
-import 'word_problem_parser.dart';
 
 part 'pattern_solver.dart';
 
@@ -41,15 +41,27 @@ class SolverEngine {
   // ═══ ENTRY POINT ═════════════════════════════════════════════════════════════
 
   Solution solve(String raw, {bool approximate = false}) {
-    final input = parseWordProblem(raw.trim());
+    // Offline interpreter: plain words / symbols / shorthand → engine syntax.
+    final interp = MathInterpreter.instance.interpret(raw.trim());
+    final input = interp.command;
     if (input.isEmpty) return Solution.unknown(input);
+    final wantApprox = approximate || interp.approximate;
 
+    final solution = _solveCommand(input, wantApprox);
+    return _withInterpretation(solution, interp);
+  }
+
+  Solution _solveCommand(String input, bool approximate) {
     Solution? giacSolution;
     if (_useGiac) {
       giacSolution = _solveViaGiac(input, approximate: approximate);
     }
 
-    final patternSolution = _solveViaPatterns(input);
+    // Commands the step-by-step pattern engine can't follow (n-th derivatives,
+    // other variables, evaluation at a point) go straight to the CAS.
+    final patternSolution = _casOnly(input)
+        ? Solution.unknown(input)
+        : _solveViaPatterns(input);
 
     if (giacSolution != null) {
       if (patternSolution.operation == "Unknown" || patternSolution.isUnsolvable) {
@@ -103,6 +115,67 @@ class SolverEngine {
     );
   }
 
+  /// True for commands only the CAS can handle faithfully.
+  bool _casOnly(String input) {
+    final l = input.toLowerCase();
+    if (l.startsWith('subst(') ||
+        l.startsWith('comb(') ||
+        l.startsWith('perm(') ||
+        l.startsWith('irem(') ||
+        l.startsWith('factorial(') ||
+        l.startsWith('transpose(') ||
+        l.startsWith('rank(') ||
+        l.startsWith('trace(') ||
+        l.startsWith('eigenvectors(') ||
+        l.startsWith('expand(') ||
+        l.startsWith('simplify(')) {
+      return true;
+    }
+    if (l.startsWith('diff(')) {
+      return _splitArgs(_ex(input, ['diff('])).length >= 2;
+    }
+    if (l.startsWith('int(')) {
+      final n = _splitArgs(_ex(input, ['int('])).length;
+      if (n == 2 || n >= 4) return true;
+    }
+    return false;
+  }
+
+  /// Adds an "Interpreted Input" step when the interpreter rewrote the input.
+  Solution _withInterpretation(Solution s, InterpretedInput i) {
+    if (!i.changed || !i.understood) return s;
+    final notes = i.notes.isEmpty ? '' : '\n${i.notes.map((n) => '• $n').join('\n')}';
+    final step = SolutionStep(
+      title: 'Interpreted Input',
+      latex: '\\text{${_texText(i.summary)}}',
+      explanation:
+          'You typed: "${i.original}"\n'
+          'Understood as: ${i.command}$notes',
+      rule: 'Offline Interpreter',
+    );
+    return Solution(
+      input: s.input,
+      domain: s.domain,
+      operation: s.operation,
+      resultLatex: s.resultLatex,
+      resultReadable: s.resultReadable,
+      steps: [step, ...s.steps],
+      isUnsolvable: s.isUnsolvable,
+      tip: s.tip,
+    );
+  }
+
+  String _texText(String t) => t
+      .replaceAll(r'\', r'\textbackslash{}')
+      .replaceAll('_', r'\_')
+      .replaceAll('%', r'\%')
+      .replaceAll('&', r'\&')
+      .replaceAll('#', r'\#')
+      .replaceAll('{', r'\{')
+      .replaceAll('}', r'\}')
+      .replaceAll('^', r'\^{}')
+      .replaceAll('~', r'\~{}');
+
   // ═══ GIAC PATH ═══════════════════════════════════════════════════════════════
   //
   // We translate user-friendly input strings into Giac's Xcas language,
@@ -125,7 +198,27 @@ class SolverEngine {
   //   normal(expr)        simplify
   //   latex(expr)         render to LaTeX string
 
-  Solution? _solveViaGiac(String input, {bool approximate = false}) {
+  /// Giac wants explicit multiplication and radians: "3x" → "3*x",
+  /// "30deg" → "(30*pi/180)", ")(" → ")*(".  Leaves function names,
+  /// identifiers like x2 / log10 and numbers such as 1e5 alone.
+  String _toGiacSyntax(String s) {
+    var o = s.replaceAllMapped(
+      RegExp(r'(\d+(?:\.\d+)?)\s*deg\b'),
+      (m) => '(${m[1]}*pi/180)',
+    );
+    o = o.replaceAllMapped(
+      RegExp(r'(?<![A-Za-z_\d.])(\d+(?:\.\d+)?)(?=[A-Za-z(])(?!e\d)'),
+      (m) => '${m[1]}*',
+    );
+    o = o.replaceAllMapped(
+      RegExp(r'\)(?=[A-Za-z0-9(])'),
+      (m) => ')*',
+    );
+    return o;
+  }
+
+  Solution? _solveViaGiac(String rawInput, {bool approximate = false}) {
+    final input = _toGiacSyntax(rawInput);
     final lower = input.toLowerCase();
 
     // ── Determine Giac command ──────────────────────────────────────────────
@@ -145,7 +238,10 @@ class SolverEngine {
           'd/dt',
         ]);
         final varName = lower.contains('d/dt') ? 't' : 'x';
-        giacCmd = 'diff($expr,$varName)';
+        final dParts = _splitArgs(expr);
+        giacCmd = dParts.length >= 2
+            ? 'diff(${dParts.join(',')})' // diff(f,v) or diff(f,v,n)
+            : 'diff($expr,$varName)';
         operation = 'Derivative';
         domain = MathDomain.calculus;
       } else if (lower.startsWith('laplace(')) {
@@ -162,8 +258,16 @@ class SolverEngine {
       } else if (_isIntegral(lower)) {
         final inner = _ex(input, ['int(', 'integrate(', 'antideriv(']);
         final parts = _splitArgs(inner);
-        if (parts.length >= 3) {
+        if (parts.length >= 4) {
+          // int(f, v, a, b)
+          giacCmd =
+              'int(${parts[0]},${parts[1]},${parts[2]},${parts[3]})';
+        } else if (parts.length == 3) {
           giacCmd = 'int(${parts[0]},x,${parts[1]},${parts[2]})';
+        } else if (parts.length == 2 &&
+            RegExp(r'^[a-z]$').hasMatch(parts[1])) {
+          // int(f, v)
+          giacCmd = 'int(${parts[0]},${parts[1]})';
         } else {
           giacCmd = 'int($inner,x)';
           integralIndefinite = true;
