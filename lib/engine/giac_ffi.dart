@@ -14,6 +14,8 @@ import 'dart:ffi';
 import 'dart:io';
 import 'package:ffi/ffi.dart';
 
+import 'step_toolkit.dart' show SolutionVerifier;
+
 // ─── C function signatures ────────────────────────────────────────────────────
 
 /// char* solve_math(const char* input)
@@ -83,6 +85,19 @@ class GiacFFI {
   /// Returns an error string prefixed with 'Error:' on failure — never throws.
   String solve(String input) {
     if (input.trim().isEmpty) return '';
+
+    // Last line of defence for the native crash: Giac's symbolic rewriting
+    // (abs, normal, simplify, latex, ...) recurses forever on trig of a
+    // constant (sin(pi/8)) and SIGSEGV's the worker thread, which a Dart
+    // try/catch cannot stop.  Only a bare evalf(...) is safe for those.
+    if (SolutionVerifier.hasExactTrig(input) &&
+        !RegExp(r'^\s*evalf\(').hasMatch(input)) {
+      return 'Error: exact trig constant skipped';
+    }
+    if (SolutionVerifier.hasExactTrig(input) &&
+        RegExp(r'abs\(|normal\(|simplify\(|latex\(').hasMatch(input)) {
+      return 'Error: exact trig constant skipped';
+    }
 
     final inputPtr = input.toNativeUtf8();
     Pointer<Utf8>? resultPtr;

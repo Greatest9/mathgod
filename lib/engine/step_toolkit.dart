@@ -588,7 +588,17 @@ class SolutionVerifier {
       return _failed('numeric evaluation', err);
     }
     // A single abs() reaches complex-valued results that _number cannot read.
-    final d = _number(_g('evalf(abs(($li) - ($lr)))'));
+    // Never with an exact trig constant on either side: when one side is not
+    // a number (e.g. the pattern engine's "See identities"), Giac cannot
+    // evaluate abs() numerically, falls back to symbolic simplification and
+    // SIGSEGV's the worker thread (sin(pi/8) crash).
+    final trigConst = _trigExact(li) || _trigExact(lr);
+    final d = trigConst ? null : _number(_g('evalf(abs(($li) - ($lr)))'));
+    if (trigConst && (a == null || b == null)) {
+      return _unavailable(
+        'An exact trig value has no independent numeric check here.',
+      );
+    }
     if (d != null) {
       if (d < 1e-9) {
         return _verified(
@@ -613,6 +623,11 @@ class SolutionVerifier {
           'The simplified difference between the input and the result is zero.',
         );
       }
+    }
+    if (_trigExact(f) || _trigExact(result)) {
+      return _unavailable(
+        'An exact trig value has no independent numeric check here.',
+      );
     }
     final residual = _number(_g('evalf(abs(($f) - ($result)))'));
     if (residual == null) {

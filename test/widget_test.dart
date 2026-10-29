@@ -23,6 +23,21 @@ void main() {
     });
   });
 
+  group('Unrecognized input', () {
+    test('plain words are not evaluated as a product of letters', () {
+      for (final s in ['asdf', 'hello how are you', 'blah blah banana']) {
+        expect(SolverEngine.instance.solve(s).operation, 'Unknown', reason: s);
+      }
+    });
+
+    test('exact trig constants do not throw', () {
+      for (final s in ['sin(pi/8)', 'sin(30deg)', 'sin pi/8']) {
+        expect(() => SolverEngine.instance.solve(s), returnsNormally,
+            reason: s);
+      }
+    });
+  });
+
   group('Solver Engine Fallback Tests', () {
     test('Derivative pattern solve', () {
       final sol = SolverEngine.instance.solve('d/dx[x^5]');

@@ -45,6 +45,13 @@ class SolverEngine {
     final interp = MathInterpreter.instance.interpret(raw.trim());
     final input = interp.command;
     if (input.isEmpty) return Solution.unknown(input);
+
+    // Plain words the interpreter could not read ("asdf", "hello how are
+    // you") must not reach the CAS: it would happily multiply the letters.
+    // Anything with brackets or '=' still goes through as raw engine syntax.
+    if (!interp.understood && !RegExp(r'[()\[\]=]').hasMatch(input)) {
+      return Solution.unknown(input);
+    }
     final wantApprox = approximate || interp.approximate;
 
     final solution = _solveCommand(input, wantApprox);

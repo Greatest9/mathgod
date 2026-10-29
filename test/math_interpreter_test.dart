@@ -72,6 +72,8 @@ void main() {
 
     test('gibberish is reported as not understood', () {
       expect(interp.interpret('blah blah banana').understood, isFalse);
+      expect(interp.interpret('asdf').understood, isFalse);
+      expect(interp.interpret('hello how are you').understood, isFalse);
     });
   });
 }
