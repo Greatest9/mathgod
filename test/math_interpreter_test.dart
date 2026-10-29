@@ -72,8 +72,15 @@ void main() {
 
     test('gibberish is reported as not understood', () {
       expect(interp.interpret('blah blah banana').understood, isFalse);
-      expect(interp.interpret('asdf').understood, isFalse);
-      expect(interp.interpret('hello how are you').understood, isFalse);
     });
+
+    for (final s in ['asdf', 'hello how are you', 'how are you', 'hello']) {
+      test('plain words are not math: $s', () {
+        final r = interp.interpret(s);
+        expect(r.understood, isFalse,
+            reason: 'DIAG "$s" -> intent=${r.intent} cmd=${r.command} '
+                'conf=${r.confidence} summary=${r.summary}');
+      });
+    }
   });
 }
