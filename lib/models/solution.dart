@@ -115,7 +115,8 @@ class Solution {
         title: "Input Format Not Recognized",
         latex: "\\text{Try the examples below}",
         explanation:
-            "Math God supports:\n"
+            "Type it in plain words or symbols — e.g. \"derivative of x^2 sin x\", \"solve 2x+3=7\", \"determinant of 1 2; 3 4\".\n\n"
+            "Or use exact syntax:\n"
             "• Derivatives: d/dx[x^3]  or  diff(sin(x))\n"
             "• Integrals: int(x^2)  or  int(e^x, 0, 1)\n"
             "• Limits: lim(sin(x)/x, x, 0)\n"
