@@ -66,6 +66,18 @@ void main() {
       }
     });
 
+    test('ordinary math phrasing is still understood', () {
+      for (final s in [
+        'x squared plus 3x',
+        'x to the power of 2 plus 1',
+        '2x + 3y',
+        'sin x cos x',
+        '5 times x',
+      ]) {
+        expect(interp.interpret(s).understood, isTrue, reason: s);
+      }
+    });
+
     test('decimal requests set the approximate flag', () {
       expect(interp.interpret('ln of 5 as a decimal').approximate, isTrue);
     });
@@ -74,7 +86,7 @@ void main() {
       expect(interp.interpret('blah blah banana').understood, isFalse);
     });
 
-    for (final s in ['asdf', 'hello how are you', 'how are you', 'hello']) {
+    for (final s in ['asdf', 'hello how are you', 'how are you', 'what is your name']) {
       test('plain words are not math: $s', () {
         final r = interp.interpret(s);
         expect(r.understood, isFalse,

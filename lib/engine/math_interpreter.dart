@@ -517,6 +517,7 @@ class MathInterpreter {
   InterpretedInput? _bare(String t, String original, List<String> notes) {
     final hasRel = RegExp(r'(?:<=|>=|!=|<|>|(?<![<>!=])=(?!=))').hasMatch(t) ||
         RegExp(r'\b(?:equals|is equal to|equal to|less than|greater than)\b').hasMatch(t);
+    if (_looksLikeSentence(t)) return null;
     final cleaned = _cleanExpr(t, keepRel: true);
     if (cleaned.isEmpty) return null;
     if (_hasUnknownWords(cleaned)) return null;
@@ -1581,6 +1582,30 @@ class MathInterpreter {
 
   String _renameVar(String expr, String from, String to) =>
       expr.replaceAll(RegExp('(?<![a-z])$from(?![a-z])'), to);
+
+  static const Set<String> _glueWords = {
+    'the', 'and', 'for', 'per', 'via', 'out', 'off', 'mod',
+  };
+
+  /// Short everyday words ("how are you") are too short for the 4-letter
+  /// check in [_hasUnknownWords] and would otherwise be read as a product
+  /// of single-letter variables (h*o*w*a*r*e*y*o*u).  Two or more unknown
+  /// words of 3+ letters containing a vowel mean this is a sentence, not
+  /// math.
+  bool _looksLikeSentence(String t) {
+    var unknown = 0;
+    for (final m in RegExp(r'[a-z]{3,}').allMatches(t)) {
+      final w = m[0]!;
+      if (_funcs.contains(w) || _consts.contains(w) || _knownWords.contains(w)) {
+        continue;
+      }
+      if (_vocab.contains(w) || _glueWords.contains(w)) continue;
+      if (_pieces.any(w.contains)) continue;
+      if (!RegExp(r'[aeiou]').hasMatch(w)) continue;
+      unknown++;
+    }
+    return unknown >= 2;
+  }
 
   bool _hasUnknownWords(String cleaned) {
     for (final m in RegExp(r'[a-z]{4,}').allMatches(cleaned)) {
